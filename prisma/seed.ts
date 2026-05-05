@@ -48,7 +48,7 @@ async function main() {
       durationMinutes: 90,
       recurrence: "ONE_OFF",
       status: "COMPLETED",
-      hostId: amber.id,
+      createdById: amber.id,
       attendees: {
         create: [
           { userId: amber.id },
@@ -61,16 +61,16 @@ async function main() {
       },
       sections: {
         create: [
-          { title: "Campaign Overview", body: "Reviewed the three hero directions. Team voted for Direction B (lifestyle photography) as the primary. Direction A retained as fallback for digital only.", position: 0 },
-          { title: "Timeline Review", body: "Photo shoot locked for April 22–23. Creative assets needed by May 1 for paid launch on May 6.", position: 1 },
-          { title: "Budget Discussion", body: "Photography: $12k approved. Video production quote pending from two vendors. Parker to bring back numbers by EOW.", position: 2 },
+          { heading: "Campaign Overview", bodyMd: "Reviewed the three hero directions. Team voted for Direction B (lifestyle photography) as the primary. Direction A retained as fallback for digital only.", position: 0 },
+          { heading: "Timeline Review", bodyMd: "Photo shoot locked for April 22–23. Creative assets needed by May 1 for paid launch on May 6.", position: 1 },
+          { heading: "Budget Discussion", bodyMd: "Photography: $12k approved. Video production quote pending from two vendors. Parker to bring back numbers by EOW.", position: 2 },
         ],
       },
       decisions: {
         create: [
-          { text: "Direction B selected as primary campaign concept" },
-          { text: "Photo shoot date locked: April 22–23" },
-          { text: "All final assets due May 1 for paid launch" },
+          { body: "Direction B selected as primary campaign concept" },
+          { body: "Photo shoot date locked: April 22–23" },
+          { body: "All final assets due May 1 for paid launch" },
         ],
       },
     },
@@ -83,7 +83,7 @@ async function main() {
       durationMinutes: 45,
       recurrence: "WEEKLY",
       status: "COMPLETED",
-      hostId: amber.id,
+      createdById: amber.id,
       attendees: {
         create: [
           { userId: amber.id },
@@ -94,8 +94,8 @@ async function main() {
       },
       sections: {
         create: [
-          { title: "Status Updates", body: "Spring launch on track. Lifecycle drip in legal review, expected back Thursday. TikTok ad accounts pending approval.", position: 0 },
-          { title: "Blockers", body: "Disclosure language not finalized — blocks lifecycle send. Kayla to follow up with legal directly.", position: 1 },
+          { heading: "Status Updates", bodyMd: "Spring launch on track. Lifecycle drip in legal review, expected back Thursday. TikTok ad accounts pending approval.", position: 0 },
+          { heading: "Blockers", bodyMd: "Disclosure language not finalized — blocks lifecycle send. Kayla to follow up with legal directly.", position: 1 },
         ],
       },
     },
@@ -108,7 +108,7 @@ async function main() {
       durationMinutes: 60,
       recurrence: "ONE_OFF",
       status: "UPCOMING",
-      hostId: parker.id,
+      createdById: parker.id,
       attendees: {
         create: [
           { userId: parker.id },
@@ -122,25 +122,25 @@ async function main() {
   // Action items
   await prisma.actionItem.createMany({
     data: [
-      { title: "Share photo shoot call sheet with full team", status: "OPEN", priority: "HIGH", meetingId: m1.id, assigneeId: jordan.id, dueDate: new Date("2026-04-19") },
-      { title: "Get two video production quotes", status: "OPEN", priority: "HIGH", meetingId: m1.id, assigneeId: parker.id, dueDate: new Date("2026-04-18") },
-      { title: "Approve hero copy variations", status: "DONE", priority: "HIGH", meetingId: m1.id, assigneeId: amber.id },
-      { title: "Follow up with legal on disclosure language", status: "IN_PROGRESS", priority: "HIGH", meetingId: m2.id, assigneeId: kayla.id, dueDate: new Date("2026-04-25") },
-      { title: "Stand up TikTok + Reels ad accounts", status: "OPEN", priority: "MEDIUM", meetingId: m2.id, assigneeId: sam.id, dueDate: new Date("2026-04-28") },
+      { title: "Share photo shoot call sheet with full team", status: "OPEN", priority: "HIGH", meetingId: m1.id, assigneeId: jordan.id, createdById: amber.id, dueDate: new Date("2026-04-19") },
+      { title: "Get two video production quotes", status: "OPEN", priority: "HIGH", meetingId: m1.id, assigneeId: parker.id, createdById: amber.id, dueDate: new Date("2026-04-18") },
+      { title: "Approve hero copy variations", status: "DONE", priority: "HIGH", meetingId: m1.id, assigneeId: amber.id, createdById: amber.id },
+      { title: "Follow up with legal on disclosure language", status: "IN_PROGRESS", priority: "HIGH", meetingId: m2.id, assigneeId: kayla.id, createdById: amber.id, dueDate: new Date("2026-04-25") },
+      { title: "Stand up TikTok + Reels ad accounts", status: "OPEN", priority: "MEDIUM", meetingId: m2.id, assigneeId: sam.id, createdById: amber.id, dueDate: new Date("2026-04-28") },
     ],
   });
 
   // Tools
   await prisma.tool.createMany({
     data: [
-      { name: "HubSpot", url: "https://app.hubspot.com", category: "CRM", credKind: "SSO", seats: 6, notes: "Primary CRM and email platform. SSO via Google Workspace.", ownerId: amber.id },
-      { name: "Canva for Teams", url: "https://www.canva.com", category: "Design", credKind: "SSO", seats: 6, notes: "Brand asset creation and template management.", ownerId: riley.id },
-      { name: "SEMrush", url: "https://www.semrush.com", category: "SEO", credKind: "SHARED", seats: 3, notes: "SEO and competitor research. Shared login in vault.", vaultLink: "op://Marketing/SEMrush/credentials", ownerId: parker.id },
-      { name: "Sprout Social", url: "https://app.sproutsocial.com", category: "Social", credKind: "SHARED", seats: 4, notes: "Social scheduling and analytics across all channels.", ownerId: sam.id },
-      { name: "Loom", url: "https://www.loom.com", category: "Video", credKind: "SSO", seats: 6, notes: "Internal async video communication.", ownerId: jordan.id },
-      { name: "Figma", url: "https://www.figma.com", category: "Design", credKind: "SSO", seats: 4, notes: "UI design and prototyping.", ownerId: riley.id },
-      { name: "Klaviyo", url: "https://www.klaviyo.com", category: "Email", credKind: "VAULT", seats: 2, notes: "Email automation for lifecycle flows.", vaultLink: "op://Marketing/Klaviyo/credentials", ownerId: kayla.id },
-      { name: "Google Analytics 4", url: "https://analytics.google.com", category: "Analytics", credKind: "SSO", seats: 6, notes: "Web analytics. Service account managed by Parker.", ownerId: parker.id },
+      { name: "HubSpot", url: "https://app.hubspot.com", category: "CRM", credKind: "SSO", seats: 6, notesMd: "Primary CRM and email platform. SSO via Google Workspace.", ownerUserId: amber.id },
+      { name: "Canva for Teams", url: "https://www.canva.com", category: "Design", credKind: "SSO", seats: 6, notesMd: "Brand asset creation and template management.", ownerUserId: riley.id },
+      { name: "SEMrush", url: "https://www.semrush.com", category: "SEO", credKind: "SHARED", seats: 3, notesMd: "SEO and competitor research. Shared login in vault.", vaultLink: "op://Marketing/SEMrush/credentials", ownerUserId: parker.id },
+      { name: "Sprout Social", url: "https://app.sproutsocial.com", category: "Social", credKind: "SHARED", seats: 4, notesMd: "Social scheduling and analytics across all channels.", ownerUserId: sam.id },
+      { name: "Loom", url: "https://www.loom.com", category: "Video", credKind: "SSO", seats: 6, notesMd: "Internal async video communication.", ownerUserId: jordan.id },
+      { name: "Figma", url: "https://www.figma.com", category: "Design", credKind: "SSO", seats: 4, notesMd: "UI design and prototyping.", ownerUserId: riley.id },
+      { name: "Klaviyo", url: "https://www.klaviyo.com", category: "Email", credKind: "VAULT", seats: 2, notesMd: "Email automation for lifecycle flows.", vaultLink: "op://Marketing/Klaviyo/credentials", ownerUserId: kayla.id },
+      { name: "Google Analytics 4", url: "https://analytics.google.com", category: "Analytics", credKind: "SSO", seats: 6, notesMd: "Web analytics. Service account managed by Parker.", ownerUserId: parker.id },
     ],
   });
 

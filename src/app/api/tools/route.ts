@@ -23,14 +23,14 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
 
     const body = await request.json();
-    const { name, url, category, credKind, seats, notes, vaultLink, ownerId } = body;
+    const { name, url, category, credKind, seats, notesMd, vaultLink, ownerUserId } = body;
 
     if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
-    let resolvedOwnerId = ownerId;
-    if (!resolvedOwnerId && user?.email) {
+    let resolvedOwnerUserId = ownerUserId;
+    if (!resolvedOwnerUserId && user?.email) {
       const dbUser = await db.user.findUnique({ where: { email: user.email } });
-      resolvedOwnerId = dbUser?.id;
+      resolvedOwnerUserId = dbUser?.id;
     }
 
     const tool = await db.tool.create({
@@ -40,9 +40,9 @@ export async function POST(request: Request) {
         category,
         credKind: credKind ?? "SHARED",
         seats,
-        notes,
+        notesMd,
         vaultLink,
-        ownerId: resolvedOwnerId,
+        ownerUserId: resolvedOwnerUserId,
       },
       include: { owner: true },
     });

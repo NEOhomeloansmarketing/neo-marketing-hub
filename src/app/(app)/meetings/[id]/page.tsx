@@ -20,7 +20,7 @@ export default async function MeetingDetailPage({
           include: { user: true },
         },
         sections: { orderBy: { position: "asc" } },
-        decisions: { orderBy: { position: "asc" } },
+        decisions: { orderBy: { createdAt: "asc" } },
         actionItems: {
           include: { assignee: true },
           orderBy: { createdAt: "asc" },

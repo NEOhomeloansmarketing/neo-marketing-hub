@@ -33,23 +33,24 @@ export async function POST(request: Request) {
     if (user?.email) {
       dbUser = await db.user.findUnique({ where: { email: user.email } });
     }
+    if (!dbUser) return NextResponse.json({ error: "User not found" }, { status: 400 });
 
     const meeting = await db.meeting.create({
       data: {
         title,
         scheduledAt: new Date(scheduledAt),
         durationMinutes: durationMinutes ?? 60,
-        recurrence: recurrence ?? "NONE",
+        recurrence: recurrence ?? "ONE_OFF",
         status: "UPCOMING",
-        hostId: dbUser?.id,
+        createdById: dbUser.id,
         attendees: attendeeIds?.length
           ? { create: (attendeeIds as string[]).map((userId: string) => ({ userId })) }
           : undefined,
         sections: sections?.length
           ? {
-              create: (sections as { title: string; body?: string }[]).map((s, i) => ({
-                title: s.title,
-                body: s.body ?? "",
+              create: (sections as (string | { heading: string; bodyMd?: string })[]).map((s, i) => ({
+                heading: typeof s === "string" ? s : s.heading,
+                bodyMd: typeof s === "string" ? "" : (s.bodyMd ?? ""),
                 position: i,
               })),
             }

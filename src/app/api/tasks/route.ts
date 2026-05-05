@@ -46,7 +46,7 @@ export async function POST(request: Request) {
         dueBucket: dueBucket ?? "later",
         dueDate: dueDate ? new Date(dueDate) : null,
         priority: priority ?? "MEDIUM",
-        status: "OPEN",
+        status: "TODO",
         scope: scope ?? "TEAM",
       },
       include: { owner: true, followers: { include: { user: true } } },
