@@ -288,10 +288,54 @@ function CredRow({
 
 const ALL_CATEGORIES = "All";
 
-export function ToolsGrid({ tools, categories }: ToolsGridProps) {
+export function ToolsGrid({ tools: initialTools, categories }: ToolsGridProps) {
+  const [tools, setTools] = useState(initialTools);
   const [cat, setCat] = useState(ALL_CATEGORIES);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const [newCredKind, setNewCredKind] = useState("SHARED");
+
+  const handleAddTool = async () => {
+    if (!newName.trim()) return;
+    try {
+      const res = await fetch("/api/tools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(),
+          url: newUrl.trim() || undefined,
+          category: newCategory.trim() || "Other",
+          credKind: newCredKind,
+        }),
+      });
+      if (res.ok) {
+        const tool = await res.json();
+        setTools((prev) => [
+          {
+            id: tool.id,
+            name: tool.name,
+            url: tool.url ?? "",
+            category: tool.category ?? "Other",
+            credKind: tool.credKind,
+            owner: tool.owner ?? null,
+            glyph: tool.glyph ?? null,
+            color: tool.color ?? null,
+            seats: tool.seats ?? null,
+            notesMd: tool.notesMd ?? null,
+            vaultLink: tool.vaultLink ?? null,
+            mfaMethod: tool.mfaMethod ?? null,
+            lastAccessed: tool.lastAccessed ?? null,
+          },
+          ...prev,
+        ]);
+      }
+    } catch { /* silently fail */ }
+    setNewName(""); setNewUrl(""); setNewCategory(""); setComposing(false);
+  };
 
   const filtered = tools.filter((t) => {
     if (cat !== ALL_CATEGORIES && t.category !== cat) return false;
@@ -345,24 +389,90 @@ export function ToolsGrid({ tools, categories }: ToolsGridProps) {
             {c}
           </Chip>
         ))}
-        <div
-          className="ml-auto flex h-9 items-center gap-2 rounded-md px-2.5"
-          style={{ background: "#0a2540", border: "1px solid #1d4368", width: 240 }}
-        >
-          <span style={{ color: "#858889" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search tools…"
-            className="w-full bg-transparent text-[12px] outline-none placeholder:text-slate-500"
-            style={{ color: "#e2e8f0" }}
-          />
+        <div className="ml-auto flex items-center gap-2">
+          <div
+            className="flex h-9 items-center gap-2 rounded-md px-2.5"
+            style={{ background: "#0a2540", border: "1px solid #1d4368", width: 220 }}
+          >
+            <span style={{ color: "#858889" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search tools…"
+              className="w-full bg-transparent text-[12px] outline-none placeholder:text-slate-500"
+              style={{ color: "#e2e8f0" }}
+            />
+          </div>
+          <button
+            onClick={() => setComposing(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white"
+            style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", boxShadow: "0 4px 14px rgba(91,203,245,0.25)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            Add tool
+          </button>
         </div>
       </div>
+
+      {/* Add tool compose form */}
+      {composing && (
+        <div className="rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid rgba(91,203,245,0.45)" }}>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Tool name *</label>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setComposing(false); }}
+                placeholder="e.g. Salesforce"
+                className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>URL</label>
+              <input
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                placeholder="e.g. salesforce.com"
+                className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Category</label>
+              <input
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                placeholder="e.g. CRM"
+                className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Credentials</label>
+              <select value={newCredKind} onChange={(e) => setNewCredKind(e.target.value)}
+                className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}>
+                <option value="SHARED">Shared login</option>
+                <option value="SSO">SSO</option>
+                <option value="VAULT">1Password Vault</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-3 flex justify-end gap-2">
+            <button onClick={() => setComposing(false)} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
+              style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>Cancel</button>
+            <button onClick={handleAddTool} disabled={!newName.trim()} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-40"
+              style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)" }}>Add tool</button>
+          </div>
+        </div>
+      )}
 
       {/* Grid */}
       <div className="grid grid-cols-12 gap-3">

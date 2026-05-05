@@ -37,9 +37,10 @@ interface TopBarProps {
   subtitle?: string;
   primaryAction?: string;
   primaryActionHref?: string;
+  onPrimaryAction?: () => void;
 }
 
-export function TopBar({ title, subtitle, primaryAction = "+ New", primaryActionHref }: TopBarProps) {
+export function TopBar({ title, subtitle, primaryAction = "+ New", primaryActionHref, onPrimaryAction }: TopBarProps) {
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -139,7 +140,10 @@ export function TopBar({ title, subtitle, primaryAction = "+ New", primaryAction
 
       {/* Primary action */}
       <button
-        onClick={() => primaryActionHref && router.push(primaryActionHref)}
+        onClick={() => {
+          if (onPrimaryAction) onPrimaryAction();
+          else if (primaryActionHref) router.push(primaryActionHref);
+        }}
         className="flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition hover:brightness-110"
         style={{
           background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)",

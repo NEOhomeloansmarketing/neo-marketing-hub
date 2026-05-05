@@ -79,6 +79,50 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
   const [tab, setTab] = useState<TabType>("mine");
   const [query, setQuery] = useState("");
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPriority, setNewPriority] = useState("MEDIUM");
+  const [newBucket, setNewBucket] = useState("today");
+
+  const handleAddTask = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          priority: newPriority,
+          dueBucket: newBucket,
+          scope: tab === "mine" ? "PERSONAL" : "TEAM",
+        }),
+      });
+      if (res.ok) {
+        const task = await res.json();
+        setTasks((ts) => [
+          {
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            ownerId: task.ownerId,
+            ownerName: task.owner?.name ?? "",
+            ownerColor: task.owner?.color,
+            ownerInitials: task.owner?.initials,
+            projectId: task.projectId,
+            dueBucket: task.dueBucket,
+            dueDate: task.dueDate,
+            status: task.status,
+            priority: task.priority,
+            scope: task.scope,
+            followers: [],
+          },
+          ...ts,
+        ]);
+      }
+    } catch { /* silently fail */ }
+    setNewTitle("");
+    setComposing(false);
+  };
 
   const toggle = async (id: string) => {
     setTasks((ts) =>
@@ -184,8 +228,55 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
               style={{ color: "#e2e8f0" }}
             />
           </div>
+          <button
+            onClick={() => setComposing(true)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white"
+            style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", boxShadow: "0 4px 14px rgba(91,203,245,0.25)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            New task
+          </button>
         </div>
       </div>
+
+      {/* New task compose */}
+      {composing && (
+        <div className="rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid rgba(91,203,245,0.45)" }}>
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); if (e.key === "Escape") setComposing(false); }}
+            placeholder="Task title…"
+            className="w-full bg-transparent text-[14px] font-semibold outline-none placeholder:text-slate-500"
+            style={{ color: "#e2e8f0" }}
+          />
+          <div className="mt-3 flex items-center gap-2">
+            <select value={newPriority} onChange={(e) => setNewPriority(e.target.value)}
+              className="h-7 rounded-md px-2 text-[11px] outline-none"
+              style={{ background: "#14375a", border: "1px solid #1d4368", color: "#cbd5e1" }}>
+              <option value="HIGH">High priority</option>
+              <option value="MEDIUM">Medium priority</option>
+              <option value="LOW">Low priority</option>
+            </select>
+            <select value={newBucket} onChange={(e) => setNewBucket(e.target.value)}
+              className="h-7 rounded-md px-2 text-[11px] outline-none"
+              style={{ background: "#14375a", border: "1px solid #1d4368", color: "#cbd5e1" }}>
+              <option value="today">Today</option>
+              <option value="tomorrow">Tomorrow</option>
+              <option value="this-week">This week</option>
+              <option value="next-week">Next week</option>
+              <option value="later">Later</option>
+            </select>
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => setComposing(false)} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
+                style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>Cancel</button>
+              <button onClick={handleAddTask} disabled={!newTitle.trim()} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-40"
+                style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)" }}>Add task</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Info banner */}
       {tab === "mine" && (

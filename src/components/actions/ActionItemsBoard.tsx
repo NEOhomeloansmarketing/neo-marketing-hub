@@ -80,9 +80,23 @@ function PriorityDot({ priority }: { priority: string }) {
   );
 }
 
-export function ActionItemsBoard({ items, stats }: ActionItemsBoardProps) {
+export function ActionItemsBoard({ items: initialItems, stats: initialStats }: ActionItemsBoardProps) {
+  const [items, setItems] = useState(initialItems);
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
   const [query, setQuery] = useState("");
+  const [composing, setComposing] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPriority, setNewPriority] = useState("MEDIUM");
+
+  const stats = {
+    open: items.filter((a) => a.status !== "DONE").length,
+    dueThisWeek: (() => {
+      const weekEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      return items.filter((a) => a.dueDate && new Date(a.dueDate) <= weekEnd && a.status !== "DONE").length;
+    })(),
+    completed: items.filter((a) => a.status === "DONE").length,
+    avgDays: initialStats.avgDays,
+  };
 
   const filtered = items.filter((a) => {
     if (statusFilter !== "ALL" && a.status !== statusFilter) return false;
@@ -91,11 +105,43 @@ export function ActionItemsBoard({ items, stats }: ActionItemsBoardProps) {
   });
 
   const handleStatusChange = async (id: string, newStatus: string) => {
+    setItems((prev) => prev.map((a) => a.id === id ? { ...a, status: newStatus } : a));
     await fetch(`/api/actions/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
     });
+  };
+
+  const handleAddAction = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      const res = await fetch("/api/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle.trim(), priority: newPriority }),
+      });
+      if (res.ok) {
+        const action = await res.json();
+        setItems((prev) => [
+          {
+            id: action.id,
+            title: action.title,
+            status: action.status,
+            priority: action.priority,
+            assignee: action.assignee ?? null,
+            dueDate: action.dueDate ?? null,
+            meetingId: null,
+            meetingTitle: null,
+            source: action.source,
+            createdAt: action.createdAt,
+          },
+          ...prev,
+        ]);
+      }
+    } catch { /* silently fail */ }
+    setNewTitle("");
+    setComposing(false);
   };
 
   return (
@@ -105,34 +151,74 @@ export function ActionItemsBoard({ items, stats }: ActionItemsBoardProps) {
         <StatCard span={3} label="Open" value={String(stats.open)} delta="across all meetings" tone="indigo" />
         <StatCard span={3} label="Due this week" value={String(stats.dueThisWeek)} delta="needs attention" />
         <StatCard span={3} label="Completed" value={String(stats.completed)} delta="this month" tone="green" />
-        <StatCard span={3} label="Avg time-to-close" value={`${stats.avgDays}d`} delta="days" tone="green" />
+        <StatCard span={3} label="Avg time-to-close" value={`${initialStats.avgDays}d`} delta="days" tone="green" />
       </div>
 
-      {/* Filters */}
+      {/* Filters + New button */}
       <div className="flex flex-wrap items-center gap-2">
         {(["ALL", "OPEN", "IN_PROGRESS", "DONE", "BLOCKED"] as FilterStatus[]).map((s) => (
           <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
             {s === "ALL" ? "All" : STATUS_MAP[s]?.label ?? s}
           </Chip>
         ))}
-        <div
-          className="ml-auto flex h-9 items-center gap-2 rounded-md px-2.5"
-          style={{ background: "#0a2540", border: "1px solid #1d4368", width: 260 }}
-        >
-          <span style={{ color: "#858889" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search action items…"
-            className="w-full bg-transparent text-[12px] outline-none placeholder:text-slate-500"
-            style={{ color: "#e2e8f0" }}
-          />
+        <div className="ml-auto flex items-center gap-2">
+          <div
+            className="flex h-9 items-center gap-2 rounded-md px-2.5"
+            style={{ background: "#0a2540", border: "1px solid #1d4368", width: 240 }}
+          >
+            <span style={{ color: "#858889" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search action items…"
+              className="w-full bg-transparent text-[12px] outline-none placeholder:text-slate-500"
+              style={{ color: "#e2e8f0" }}
+            />
+          </div>
+          <button
+            onClick={() => setComposing(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white"
+            style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", boxShadow: "0 4px 14px rgba(91,203,245,0.25)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            New action
+          </button>
         </div>
       </div>
+
+      {/* Compose form */}
+      {composing && (
+        <div className="rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid rgba(91,203,245,0.45)" }}>
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddAction(); if (e.key === "Escape") setComposing(false); }}
+            placeholder="Action item title…"
+            className="w-full bg-transparent text-[14px] font-semibold outline-none placeholder:text-slate-500"
+            style={{ color: "#e2e8f0" }}
+          />
+          <div className="mt-3 flex items-center gap-2">
+            <select value={newPriority} onChange={(e) => setNewPriority(e.target.value)}
+              className="h-7 rounded-md px-2 text-[11px] outline-none"
+              style={{ background: "#14375a", border: "1px solid #1d4368", color: "#cbd5e1" }}>
+              <option value="HIGH">High priority</option>
+              <option value="MEDIUM">Medium priority</option>
+              <option value="LOW">Low priority</option>
+            </select>
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => setComposing(false)} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
+                style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>Cancel</button>
+              <button onClick={handleAddAction} disabled={!newTitle.trim()} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-40"
+                style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)" }}>Add action</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div
