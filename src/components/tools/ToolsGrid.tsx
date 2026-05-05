@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatCard } from "@/components/ui/StatCard";
 import { Chip } from "@/components/ui/Chip";
@@ -31,6 +31,8 @@ interface Tool {
 interface ToolsGridProps {
   tools: Tool[];
   categories: string[];
+  openCompose?: boolean;
+  onComposeClose?: () => void;
 }
 
 const CRED_KIND_MAP: Record<string, { bg: string; color: string; border: string; label: string }> = {
@@ -288,12 +290,16 @@ function CredRow({
 
 const ALL_CATEGORIES = "All";
 
-export function ToolsGrid({ tools: initialTools, categories }: ToolsGridProps) {
+export function ToolsGrid({ tools: initialTools, categories, openCompose, onComposeClose }: ToolsGridProps) {
   const [tools, setTools] = useState(initialTools);
   const [cat, setCat] = useState(ALL_CATEGORIES);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+
+  useEffect(() => { if (openCompose) setComposing(true); }, [openCompose]);
+
+  const closeCompose = () => { setComposing(false); onComposeClose?.(); };
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
   const [newCategory, setNewCategory] = useState("");
@@ -334,7 +340,7 @@ export function ToolsGrid({ tools: initialTools, categories }: ToolsGridProps) {
         ]);
       }
     } catch { /* silently fail */ }
-    setNewName(""); setNewUrl(""); setNewCategory(""); setComposing(false);
+    setNewName(""); setNewUrl(""); setNewCategory(""); closeCompose();
   };
 
   const filtered = tools.filter((t) => {
@@ -428,7 +434,7 @@ export function ToolsGrid({ tools: initialTools, categories }: ToolsGridProps) {
                 autoFocus
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Escape") setComposing(false); }}
+                onKeyDown={(e) => { if (e.key === "Escape") closeCompose(); }}
                 placeholder="e.g. Salesforce"
                 className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
                 style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}
@@ -466,7 +472,7 @@ export function ToolsGrid({ tools: initialTools, categories }: ToolsGridProps) {
             </div>
           </div>
           <div className="mt-3 flex justify-end gap-2">
-            <button onClick={() => setComposing(false)} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
+            <button onClick={closeCompose} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
               style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>Cancel</button>
             <button onClick={handleAddTool} disabled={!newName.trim()} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-40"
               style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)" }}>Add tool</button>

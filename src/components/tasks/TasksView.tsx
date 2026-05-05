@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -33,6 +33,8 @@ interface TasksViewProps {
   tasks: Task[];
   teamMembers: { id: string; name: string; color?: string; initials?: string; role: string }[];
   currentUserId: string;
+  openCompose?: boolean;
+  onComposeClose?: () => void;
 }
 
 const DUE_BUCKETS = [
@@ -47,15 +49,15 @@ const DUE_BUCKETS = [
 
 const PRIORITY_TONE: Record<string, { color: string; bg: string; border: string; label: string }> = {
   HIGH: { color: "#fca5a5", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.35)", label: "High" },
-  MEDIUM: { color: "#fcd34d", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.35)", label: "Med" },
+  MEDIUM: { color: "#fcd34d", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.35)", label: "Medium" },
   LOW: { color: "#cbd5e1", bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.30)", label: "Low" },
 };
 
-function PriorityChip({ priority }: { priority: string }) {
+function PriorityChip({ priority, small }: { priority: string; small?: boolean }) {
   const t = PRIORITY_TONE[priority] || PRIORITY_TONE.LOW;
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[10px] font-semibold"
+      className={`inline-flex items-center gap-1 rounded-full font-semibold ${small ? "px-2 py-[2px] text-[10px]" : "px-2.5 py-1 text-[11px]"}`}
       style={{ background: t.bg, color: t.color, border: `1px solid ${t.border}` }}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: t.color }} />
@@ -64,77 +66,314 @@ function PriorityChip({ priority }: { priority: string }) {
   );
 }
 
-function CheckIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
-
 type TabType = "mine" | "team" | "all";
 
-export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: TasksViewProps) {
-  const [tasks, setTasks] = useState(initialTasks);
-  const [tab, setTab] = useState<TabType>("mine");
-  const [query, setQuery] = useState("");
-  const [openTask, setOpenTask] = useState<Task | null>(null);
-  const [composing, setComposing] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newPriority, setNewPriority] = useState("MEDIUM");
-  const [newBucket, setNewBucket] = useState("today");
+// ─── Rich task compose panel ───────────────────────────────────────────────
+function NewTaskPanel({
+  teamMembers,
+  currentUserId,
+  defaultScope,
+  onClose,
+  onCreated,
+}: {
+  teamMembers: TasksViewProps["teamMembers"];
+  currentUserId: string;
+  defaultScope: "PERSONAL" | "TEAM";
+  onClose: () => void;
+  onCreated: (task: Task) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assigneeId, setAssigneeId] = useState(currentUserId);
+  const [priority, setPriority] = useState("MEDIUM");
+  const [dueDate, setDueDate] = useState("");
+  const [dueBucket, setDueBucket] = useState("today");
+  const [scope, setScope] = useState<"PERSONAL" | "TEAM">(defaultScope);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleAddTask = async () => {
-    if (!newTitle.trim()) return;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const handleSave = async () => {
+    if (!title.trim()) { setError("Task title is required."); return; }
+    setSaving(true);
+    setError("");
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: newTitle.trim(),
-          priority: newPriority,
-          dueBucket: newBucket,
-          scope: tab === "mine" ? "PERSONAL" : "TEAM",
+          title: title.trim(),
+          description: description.trim() || undefined,
+          ownerId: assigneeId || undefined,
+          priority,
+          dueBucket,
+          dueDate: dueDate || undefined,
+          scope,
         }),
       });
-      if (res.ok) {
-        const task = await res.json();
-        setTasks((ts) => [
-          {
-            id: task.id,
-            title: task.title,
-            description: task.description,
-            ownerId: task.ownerId,
-            ownerName: task.owner?.name ?? "",
-            ownerColor: task.owner?.color,
-            ownerInitials: task.owner?.initials,
-            projectId: task.projectId,
-            dueBucket: task.dueBucket,
-            dueDate: task.dueDate,
-            status: task.status,
-            priority: task.priority,
-            scope: task.scope,
-            followers: [],
-          },
-          ...ts,
-        ]);
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Something went wrong. Try again.");
+        setSaving(false);
+        return;
       }
-    } catch { /* silently fail */ }
-    setNewTitle("");
+      const task = await res.json();
+      const assignee = teamMembers.find((m) => m.id === task.ownerId);
+      onCreated({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        ownerId: task.ownerId,
+        ownerName: task.owner?.name ?? assignee?.name ?? "",
+        ownerColor: task.owner?.color ?? assignee?.color,
+        ownerInitials: task.owner?.initials ?? assignee?.initials,
+        projectId: task.projectId,
+        dueBucket: task.dueBucket,
+        dueDate: task.dueDate,
+        status: task.status,
+        priority: task.priority,
+        scope: task.scope,
+        followers: [],
+      });
+      onClose();
+    } catch {
+      setError("Network error. Check your connection.");
+      setSaving(false);
+    }
+  };
+
+  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>
+      {children}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      {/* Backdrop */}
+      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)" }} />
+
+      {/* Panel */}
+      <div
+        className="relative ml-auto flex h-full w-full max-w-[560px] flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#061320", borderLeft: "1px solid #1d4368" }}
+      >
+        {/* Header */}
+        <div
+          className="flex shrink-0 items-center justify-between px-6 py-4"
+          style={{ borderBottom: "1px solid #1d4368", background: "#0a2540" }}
+        >
+          <div>
+            <div className="text-[16px] font-bold tracking-tight text-slate-100">New Task</div>
+            <div className="mt-0.5 text-[11px]" style={{ color: "#858889" }}>Press Esc to cancel</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-white/[0.06]"
+            style={{ color: "#a8aaab" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Title */}
+          <div>
+            <textarea
+              autoFocus
+              value={title}
+              onChange={(e) => { setTitle(e.target.value); setError(""); }}
+              placeholder="Task title…"
+              rows={2}
+              className="w-full resize-none bg-transparent text-[22px] font-bold leading-snug tracking-tight outline-none placeholder:text-slate-600"
+              style={{ color: "#f1f5f9" }}
+            />
+            {error && (
+              <div className="mt-1 text-[11.5px] font-medium" style={{ color: "#fca5a5" }}>{error}</div>
+            )}
+          </div>
+
+          {/* Two-col grid for metadata */}
+          <div className="grid grid-cols-2 gap-4">
+
+            {/* Assignee */}
+            <div>
+              <SectionLabel>Assignee</SectionLabel>
+              <select
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-[12.5px] outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#e2e8f0" }}
+              >
+                <option value="">Unassigned</option>
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Due date */}
+            <div>
+              <SectionLabel>Due date</SectionLabel>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-[12.5px] outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: dueDate ? "#e2e8f0" : "#5d6566", colorScheme: "dark" }}
+              />
+            </div>
+
+            {/* Priority */}
+            <div>
+              <SectionLabel>Priority</SectionLabel>
+              <div className="flex gap-2">
+                {(["HIGH", "MEDIUM", "LOW"] as const).map((p) => {
+                  const t = PRIORITY_TONE[p];
+                  const active = priority === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setPriority(p)}
+                      className="flex-1 rounded-lg py-2 text-[11px] font-bold transition"
+                      style={{
+                        background: active ? t.bg : "#0e2b48",
+                        color: active ? t.color : "#5d6566",
+                        border: `1.5px solid ${active ? t.border : "#1d4368"}`,
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Due bucket */}
+            <div>
+              <SectionLabel>Schedule</SectionLabel>
+              <select
+                value={dueBucket}
+                onChange={(e) => setDueBucket(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-[12.5px] outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#e2e8f0" }}
+              >
+                <option value="today">Today</option>
+                <option value="tomorrow">Tomorrow</option>
+                <option value="this-week">This week</option>
+                <option value="next-week">Next week</option>
+                <option value="later">Later</option>
+              </select>
+            </div>
+
+          </div>
+
+          {/* Scope toggle */}
+          <div>
+            <SectionLabel>Visibility</SectionLabel>
+            <div className="flex gap-2">
+              {([["PERSONAL", "Personal (private)"], ["TEAM", "Team"]] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  onClick={() => setScope(v)}
+                  className="flex-1 rounded-lg py-2.5 text-[12px] font-semibold transition"
+                  style={{
+                    background: scope === v ? "rgba(91,203,245,0.14)" : "#0e2b48",
+                    color: scope === v ? "#5bcbf5" : "#5d6566",
+                    border: `1.5px solid ${scope === v ? "rgba(91,203,245,0.45)" : "#1d4368"}`,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <SectionLabel>Notes / description</SectionLabel>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Add context, links, or details…"
+              rows={5}
+              className="w-full resize-none rounded-lg px-3 py-2.5 text-[13px] leading-relaxed outline-none placeholder:text-slate-600"
+              style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex shrink-0 items-center justify-between px-6 py-4"
+          style={{ borderTop: "1px solid #1d4368", background: "#0a2540" }}
+        >
+          <div className="text-[11px]" style={{ color: "#5d6566" }}>
+            Enter a title then click Create
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-[12.5px] font-semibold transition hover:bg-white/[0.04]"
+              style={{ color: "#a8aaab" }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !title.trim()}
+              className="rounded-lg px-5 py-2 text-[12.5px] font-bold text-white transition disabled:opacity-40"
+              style={{
+                background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)",
+                boxShadow: "0 4px 18px rgba(91,203,245,0.35)",
+              }}
+            >
+              {saving ? "Creating…" : "Create task"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main view ─────────────────────────────────────────────────────────────
+export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, openCompose, onComposeClose }: TasksViewProps) {
+  const [tasks, setTasks] = useState(initialTasks);
+  const [tab, setTab] = useState<TabType>("mine");
+  const [query, setQuery] = useState("");
+  const [openTask, setOpenTask] = useState<Task | null>(null);
+  const [composing, setComposing] = useState(false);
+
+  useEffect(() => {
+    if (openCompose) setComposing(true);
+  }, [openCompose]);
+
+  const closeCompose = () => {
     setComposing(false);
+    onComposeClose?.();
   };
 
   const toggle = async (id: string) => {
-    setTasks((ts) =>
-      ts.map((t) =>
-        t.id === id ? { ...t, status: t.status === "DONE" ? "TODO" : "DONE" } : t
-      )
-    );
     const task = tasks.find((t) => t.id === id);
+    const newStatus = task?.status === "DONE" ? "TODO" : "DONE";
+    setTasks((ts) => ts.map((t) => t.id === id ? { ...t, status: newStatus } : t));
     await fetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: task?.status === "DONE" ? "TODO" : "DONE" }),
+      body: JSON.stringify({ status: newStatus }),
     });
   };
 
@@ -179,10 +418,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
         {count}
       </span>
       {tab === t && (
-        <span
-          className="absolute inset-x-2 -bottom-px h-0.5 rounded-full"
-          style={{ background: "#5bcbf5" }}
-        />
+        <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full" style={{ background: "#5bcbf5" }} />
       )}
     </button>
   );
@@ -199,11 +435,11 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
           tone={myOverdue > 0 ? "danger" : "green"}
         />
         <StatCard span={3} label="Team open" value={String(teamOpen)} delta="across team" tone="indigo" />
-        <StatCard span={3} label="Completed (7d)" value={String(tasks.filter((t) => t.status === "DONE").length)} delta="+2 vs prior week" tone="green" />
+        <StatCard span={3} label="Completed" value={String(tasks.filter((t) => t.status === "DONE").length)} delta="total done" tone="green" />
         <StatCard span={3} label="Total tasks" value={String(allOpen)} delta="open" />
       </div>
 
-      {/* Tabs */}
+      {/* Tabs + controls */}
       <div className="flex items-end justify-between border-b" style={{ borderColor: "#1d4368" }}>
         <div className="flex items-end gap-1">
           <TabButton t="mine" label="My Tasks" count={myOpen} />
@@ -239,45 +475,6 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
         </div>
       </div>
 
-      {/* New task compose */}
-      {composing && (
-        <div className="rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid rgba(91,203,245,0.45)" }}>
-          <input
-            autoFocus
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); if (e.key === "Escape") setComposing(false); }}
-            placeholder="Task title…"
-            className="w-full bg-transparent text-[14px] font-semibold outline-none placeholder:text-slate-500"
-            style={{ color: "#e2e8f0" }}
-          />
-          <div className="mt-3 flex items-center gap-2">
-            <select value={newPriority} onChange={(e) => setNewPriority(e.target.value)}
-              className="h-7 rounded-md px-2 text-[11px] outline-none"
-              style={{ background: "#14375a", border: "1px solid #1d4368", color: "#cbd5e1" }}>
-              <option value="HIGH">High priority</option>
-              <option value="MEDIUM">Medium priority</option>
-              <option value="LOW">Low priority</option>
-            </select>
-            <select value={newBucket} onChange={(e) => setNewBucket(e.target.value)}
-              className="h-7 rounded-md px-2 text-[11px] outline-none"
-              style={{ background: "#14375a", border: "1px solid #1d4368", color: "#cbd5e1" }}>
-              <option value="today">Today</option>
-              <option value="tomorrow">Tomorrow</option>
-              <option value="this-week">This week</option>
-              <option value="next-week">Next week</option>
-              <option value="later">Later</option>
-            </select>
-            <div className="ml-auto flex items-center gap-2">
-              <button onClick={() => setComposing(false)} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
-                style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>Cancel</button>
-              <button onClick={handleAddTask} disabled={!newTitle.trim()} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-40"
-                style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)" }}>Add task</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Info banner */}
       {tab === "mine" && (
         <div
@@ -286,7 +483,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
         >
           <div className="text-[12px] leading-relaxed" style={{ color: "#cbd5e1" }}>
             <span className="font-semibold text-slate-100">My Tasks</span> shows everything assigned to
-            you — across team projects and your personal queue. Personal items are private and not visible to teammates.
+            you — across team projects and your personal queue.
           </div>
         </div>
       )}
@@ -295,8 +492,8 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
       <div className="space-y-3">
         {grouped.every((g) => g.tasks.length === 0) ? (
           <EmptyState
-            title="Inbox zero"
-            description="Nothing matches your filters. Try widening the scope."
+            title="No tasks yet"
+            description="Click "New task" to create your first task."
           />
         ) : (
           grouped.map(({ bucket, tasks: bucketTasks }) => {
@@ -315,12 +512,25 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId }: T
         )}
       </div>
 
+      {/* Rich new-task panel */}
+      {composing && (
+        <NewTaskPanel
+          teamMembers={teamMembers}
+          currentUserId={currentUserId}
+          defaultScope={tab === "mine" ? "PERSONAL" : "TEAM"}
+          onClose={closeCompose}
+          onCreated={(task) => setTasks((ts) => [task, ...ts])}
+        />
+      )}
+
       {/* Task detail drawer */}
       {openTask && (
         <TaskDetailDrawer
           task={openTask}
+          teamMembers={teamMembers}
           onClose={() => setOpenTask(null)}
           onToggle={toggle}
+          onUpdate={(updated) => setTasks((ts) => ts.map((t) => t.id === updated.id ? updated : t))}
         />
       )}
     </div>
@@ -342,32 +552,17 @@ function BucketSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section
-      className="rounded-lg overflow-hidden"
-      style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
-    >
+    <section className="rounded-lg overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
       <button
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition hover:bg-white/[0.02]"
       >
         <span className="h-2 w-2 rounded-full" style={{ background: bucket.tone }} />
-        <span className="text-[12.5px] font-semibold tracking-tight text-slate-100">
-          {bucket.label}
-        </span>
-        <span
-          className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums"
-          style={{ background: "#14375a", color: "#a8aaab" }}
-        >
+        <span className="text-[12.5px] font-semibold tracking-tight text-slate-100">{bucket.label}</span>
+        <span className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums" style={{ background: "#14375a", color: "#a8aaab" }}>
           {tasks.length}
         </span>
-        <span
-          className="ml-auto"
-          style={{
-            color: "#858889",
-            transform: open ? "rotate(90deg)" : "none",
-            transition: "transform 0.15s",
-          }}
-        >
+        <span className="ml-auto" style={{ color: "#858889", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="9 18 15 12 9 6" />
           </svg>
@@ -375,11 +570,10 @@ function BucketSection({
       </button>
       {open && (
         <div>
-          {/* Table header */}
           <div
             className="grid items-center gap-3 px-4 py-2 text-[10.5px] font-semibold uppercase"
             style={{
-              gridTemplateColumns: "20px 1fr 160px 80px 96px",
+              gridTemplateColumns: "20px 1fr 80px 100px 96px",
               borderBottom: "1px solid #1d4368",
               borderTop: "1px solid #1d4368",
               color: "#858889",
@@ -387,11 +581,7 @@ function BucketSection({
               letterSpacing: "0.12em",
             }}
           >
-            <div />
-            <div>Task</div>
-            <div>Project</div>
-            <div>Priority</div>
-            <div>Assignee</div>
+            <div /><div>Task</div><div>Priority</div><div>Due</div><div>Assignee</div>
           </div>
           {tasks.map((t) => (
             <TaskRow key={t.id} task={t} onToggle={onToggle} onOpen={onOpen} />
@@ -402,187 +592,218 @@ function BucketSection({
   );
 }
 
-function TaskRow({
-  task,
-  onToggle,
-  onOpen,
-}: {
-  task: Task;
-  onToggle: (id: string) => void;
-  onOpen: (t: Task) => void;
-}) {
+function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id: string) => void; onOpen: (t: Task) => void }) {
   const done = task.status === "DONE";
   return (
     <div
       className="grid items-center gap-3 px-4 py-2.5 transition hover:bg-white/[0.02] cursor-pointer"
-      style={{
-        gridTemplateColumns: "20px 1fr 160px 80px 96px",
-        borderBottom: "1px solid #1d4368",
-      }}
+      style={{ gridTemplateColumns: "20px 1fr 80px 100px 96px", borderBottom: "1px solid #1d4368" }}
       onClick={() => onOpen(task)}
     >
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle(task.id);
-        }}
+        onClick={(e) => { e.stopPropagation(); onToggle(task.id); }}
         className="grid h-5 w-5 place-items-center rounded-full transition"
-        style={{
-          background: done ? "#22c55e22" : "transparent",
-          border: `1.5px solid ${done ? "#22c55e" : "#5d6566"}`,
-        }}
+        style={{ background: done ? "#22c55e22" : "transparent", border: `1.5px solid ${done ? "#22c55e" : "#5d6566"}` }}
       >
         {done && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
       </button>
       <div className="min-w-0">
-        <div
-          className={"truncate text-[13px] font-medium " + (done ? "line-through" : "")}
-          style={{ color: done ? "#858889" : "#e2e8f0" }}
-        >
+        <div className={`truncate text-[13px] font-medium ${done ? "line-through" : ""}`} style={{ color: done ? "#858889" : "#e2e8f0" }}>
           {task.title}
         </div>
-        {task.followers.length > 0 && (
-          <div className="mt-0.5 flex items-center gap-1 text-[10px]" style={{ color: "#858889" }}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" />
-            </svg>
-            {task.followers.length} follower{task.followers.length === 1 ? "" : "s"}
-          </div>
-        )}
       </div>
-      <div>
-        <span
-          className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[10px] font-medium"
-          style={{ background: task.scope === "PERSONAL" ? "#14375a" : "#5bcbf520", color: task.scope === "PERSONAL" ? "#a8aaab" : "#5bcbf5", border: `1px solid ${task.scope === "PERSONAL" ? "#1d4368" : "#5bcbf544"}` }}
-        >
-          {task.scope === "PERSONAL" ? "Personal" : task.projectId ?? "No project"}
-        </span>
+      <PriorityChip priority={task.priority} small />
+      <div className="text-[11px]" style={{ color: "#a8aaab" }}>
+        {task.dueDate
+          ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+          : (DUE_BUCKETS.find((b) => b.id === task.dueBucket)?.label ?? "—")}
       </div>
-      <PriorityChip priority={task.priority} />
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <Avatar name={task.ownerName} color={task.ownerColor} initials={task.ownerInitials} size={22} />
-        <span className="text-[11px] font-medium" style={{ color: "#cbd5e1" }}>
-          {task.ownerInitials}
+        <span className="truncate text-[11px] font-medium" style={{ color: "#cbd5e1" }}>
+          {task.ownerName.split(" ")[0]}
         </span>
       </div>
     </div>
   );
 }
 
+// ─── Task detail drawer ─────────────────────────────────────────────────────
 function TaskDetailDrawer({
   task,
+  teamMembers,
   onClose,
   onToggle,
+  onUpdate,
 }: {
   task: Task;
+  teamMembers: TasksViewProps["teamMembers"];
   onClose: () => void;
   onToggle: (id: string) => void;
+  onUpdate: (t: Task) => void;
 }) {
   const done = task.status === "DONE";
+  const [editTitle, setEditTitle] = useState(task.title);
+  const [editDesc, setEditDesc] = useState(task.description ?? "");
+  const [editAssignee, setEditAssignee] = useState(task.ownerId);
+  const [editPriority, setEditPriority] = useState(task.priority);
+  const [editDueDate, setEditDueDate] = useState(task.dueDate ? task.dueDate.slice(0, 10) : "");
+  const [editBucket, setEditBucket] = useState(task.dueBucket ?? "later");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const assignee = teamMembers.find((m) => m.id === editAssignee);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDesc.trim() || null,
+          ownerId: editAssignee || undefined,
+          priority: editPriority,
+          dueDate: editDueDate || null,
+          dueBucket: editBucket,
+        }),
+      });
+      if (res.ok) {
+        onUpdate({
+          ...task,
+          title: editTitle.trim(),
+          description: editDesc.trim() || null,
+          ownerId: editAssignee,
+          ownerName: assignee?.name ?? task.ownerName,
+          ownerColor: assignee?.color ?? task.ownerColor,
+          ownerInitials: assignee?.initials ?? task.ownerInitials,
+          priority: editPriority,
+          dueDate: editDueDate || null,
+          dueBucket: editBucket,
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+    onClose();
+  };
+
+  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>{children}</div>
+  );
+
   return (
     <div className="fixed inset-0 z-40 flex" onClick={onClose}>
+      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }} />
       <div
-        className="absolute inset-0"
-        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }}
-      />
-      <div
-        className="ml-auto h-full w-full max-w-[520px] overflow-y-auto p-6"
+        className="relative ml-auto flex h-full w-full max-w-[540px] flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
-        style={{ background: "#0a2540", borderLeft: "1px solid #1d4368", position: "relative", zIndex: 1 }}
+        style={{ background: "#061320", borderLeft: "1px solid #1d4368" }}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => onToggle(task.id)}
-                className="grid h-6 w-6 place-items-center rounded-full transition"
-                style={{
-                  background: done ? "#22c55e22" : "transparent",
-                  border: `1.5px solid ${done ? "#22c55e" : "#858889"}`,
-                }}
-              >
-                {done && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-              </button>
-              <span
-                className="text-[10.5px] font-semibold uppercase"
-                style={{ color: done ? "#86efac" : "#858889", letterSpacing: "0.12em" }}
-              >
-                {done ? "Completed" : "Open"}
-              </span>
-              <span
-                className="rounded-full px-2 py-[2px] text-[10px] font-semibold uppercase"
-                style={{
-                  background: task.scope === "PERSONAL" ? "#14375a" : "rgba(91,203,245,0.16)",
-                  color: task.scope === "PERSONAL" ? "#a8aaab" : "#5bcbf5",
-                  border: `1px solid ${task.scope === "PERSONAL" ? "#1d4368" : "rgba(91,203,245,0.35)"}`,
-                  letterSpacing: "0.08em",
-                }}
-              >
-                {task.scope.toLowerCase()}
-              </span>
-            </div>
-            <h2
-              className="mt-3 text-[18px] font-semibold tracking-tight text-slate-100"
-              style={{ letterSpacing: "-0.01em" }}
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #1d4368", background: "#0a2540" }}>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onToggle(task.id)}
+              className="grid h-6 w-6 place-items-center rounded-full transition"
+              style={{ background: done ? "#22c55e22" : "transparent", border: `1.5px solid ${done ? "#22c55e" : "#858889"}` }}
             >
-              {task.title}
-            </h2>
+              {done && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+            </button>
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: done ? "#86efac" : "#858889" }}>
+              {done ? "Completed" : "Open"}
+            </span>
           </div>
-          <button
-            onClick={onClose}
-            className="grid h-7 w-7 place-items-center rounded-md shrink-0"
-            style={{ background: "#14375a", color: "#a8aaab" }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-white/[0.06]" style={{ color: "#a8aaab" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
 
-        <dl className="mt-5 grid grid-cols-[120px_1fr] gap-y-3 text-[12px]">
-          <dt style={{ color: "#858889" }}>Assignee</dt>
-          <dd className="flex items-center gap-2">
-            <Avatar name={task.ownerName} color={task.ownerColor} initials={task.ownerInitials} size={22} />
-            <span className="text-slate-100">{task.ownerName}</span>
-          </dd>
-          <dt style={{ color: "#858889" }}>Due</dt>
-          <dd className="text-slate-100">
-            {DUE_BUCKETS.find((b) => b.id === task.dueBucket)?.label ?? task.dueBucket ?? "—"}
-          </dd>
-          <dt style={{ color: "#858889" }}>Priority</dt>
-          <dd>
-            <PriorityChip priority={task.priority} />
-          </dd>
-          {task.followers.length > 0 && (
-            <>
-              <dt style={{ color: "#858889" }}>Followers</dt>
-              <dd className="flex items-center -space-x-1">
-                {task.followers.map((f) => (
-                  <span key={f.id} style={{ outline: "2px solid #0a2540", borderRadius: "999px" }}>
-                    <Avatar name={f.name} color={f.color} initials={f.initials} size={22} />
-                  </span>
-                ))}
-              </dd>
-            </>
-          )}
-        </dl>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Editable title */}
+          <textarea
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            rows={2}
+            className="w-full resize-none bg-transparent text-[22px] font-bold leading-snug tracking-tight outline-none"
+            style={{ color: "#f1f5f9" }}
+          />
 
-        {task.description && (
-          <section
-            className="mt-5 rounded-lg p-4"
-            style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
-          >
-            <div
-              className="text-[11px] font-semibold uppercase"
-              style={{ color: "#858889", letterSpacing: "0.12em" }}
-            >
-              Description
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <SectionLabel>Assignee</SectionLabel>
+              <select value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-[12.5px] outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#e2e8f0" }}>
+                <option value="">Unassigned</option>
+                {teamMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
             </div>
-            <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: "#cbd5e1" }}>
-              {task.description}
-            </p>
-          </section>
-        )}
+            <div>
+              <SectionLabel>Due date</SectionLabel>
+              <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-[12.5px] outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: editDueDate ? "#e2e8f0" : "#5d6566", colorScheme: "dark" }} />
+            </div>
+            <div>
+              <SectionLabel>Priority</SectionLabel>
+              <div className="flex gap-2">
+                {(["HIGH", "MEDIUM", "LOW"] as const).map((p) => {
+                  const t = PRIORITY_TONE[p];
+                  const active = editPriority === p;
+                  return (
+                    <button key={p} onClick={() => setEditPriority(p)}
+                      className="flex-1 rounded-lg py-2 text-[11px] font-bold transition"
+                      style={{ background: active ? t.bg : "#0e2b48", color: active ? t.color : "#5d6566", border: `1.5px solid ${active ? t.border : "#1d4368"}` }}>
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <SectionLabel>Schedule</SectionLabel>
+              <select value={editBucket} onChange={(e) => setEditBucket(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-[12.5px] outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#e2e8f0" }}>
+                <option value="today">Today</option>
+                <option value="tomorrow">Tomorrow</option>
+                <option value="this-week">This week</option>
+                <option value="next-week">Next week</option>
+                <option value="later">Later</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <SectionLabel>Notes / description</SectionLabel>
+            <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
+              placeholder="Add context, links, or details…"
+              rows={6}
+              className="w-full resize-none rounded-lg px-3 py-2.5 text-[13px] leading-relaxed outline-none placeholder:text-slate-600"
+              style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4" style={{ borderTop: "1px solid #1d4368", background: "#0a2540" }}>
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-[12.5px] font-semibold transition hover:bg-white/[0.04]" style={{ color: "#a8aaab" }}>
+            Discard
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="rounded-lg px-5 py-2 text-[12.5px] font-bold text-white disabled:opacity-40"
+            style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", boxShadow: "0 4px 18px rgba(91,203,245,0.35)" }}>
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,12 +1,11 @@
-import { TopBar } from "@/components/topbar/TopBar";
-import { ToolsGrid } from "@/components/tools/ToolsGrid";
+import { ToolsPageShell } from "@/components/tools/ToolsPageShell";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 
 export default async function ToolsPage() {
   await requireAuth();
 
-  let tools: Parameters<typeof ToolsGrid>[0]["tools"] = [];
+  let tools: React.ComponentProps<typeof ToolsPageShell>["tools"] = [];
   let categories: string[] = [];
 
   try {
@@ -29,13 +28,7 @@ export default async function ToolsPage() {
       vaultLink: t.vaultLink,
       mfaMethod: t.mfaMethod,
       owner: t.owner
-        ? {
-            id: t.owner.id,
-            name: t.owner.name,
-            color: t.owner.color,
-            initials: t.owner.initials,
-            role: t.owner.role,
-          }
+        ? { id: t.owner.id, name: t.owner.name, color: t.owner.color, initials: t.owner.initials, role: t.owner.role }
         : null,
     }));
 
@@ -46,16 +39,5 @@ export default async function ToolsPage() {
     // DB not ready
   }
 
-  return (
-    <>
-      <TopBar
-        title="Tools & Logins"
-        subtitle="Shared registry of every SaaS tool the team uses"
-        primaryAction="+ Add tool"
-      />
-      <div className="mt-6">
-        <ToolsGrid tools={tools} categories={categories} />
-      </div>
-    </>
-  );
+  return <ToolsPageShell tools={tools} categories={categories} />;
 }

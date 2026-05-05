@@ -1,30 +1,24 @@
-import { TopBar } from "@/components/topbar/TopBar";
-import { TasksView } from "@/components/tasks/TasksView";
+import { TasksPageShell } from "@/components/tasks/TasksPageShell";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { createClient } from "@/lib/supabase-server";
+import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 
 export default async function TasksPage() {
   await requireAuth();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  let tasks: Parameters<typeof TasksView>[0]["tasks"] = [];
-  let teamMembers: Parameters<typeof TasksView>[0]["teamMembers"] = [];
+  let tasks: React.ComponentProps<typeof TasksPageShell>["tasks"] = [];
+  let teamMembers: React.ComponentProps<typeof TasksPageShell>["teamMembers"] = [];
   let currentUserId = "";
 
   try {
-    let dbUser = null;
-    if (user?.email) {
-      dbUser = await db.user.findUnique({ where: { email: user.email } });
-    }
+    const dbUser = await getOrCreateDbUser(user);
     currentUserId = dbUser?.id ?? "";
 
     const rawTasks = await db.task.findMany({
-      include: {
-        owner: true,
-        followers: { include: { user: true } },
-      },
+      include: { owner: true, followers: { include: { user: true } } },
       orderBy: { createdAt: "desc" },
     });
 
@@ -67,15 +61,6 @@ export default async function TasksPage() {
   }
 
   return (
-    <>
-      <TopBar
-        title="My Tasks"
-        subtitle="Personal queue and team assignments"
-        primaryAction="+ New task"
-      />
-      <div className="mt-6">
-        <TasksView tasks={tasks} teamMembers={teamMembers} currentUserId={currentUserId} />
-      </div>
-    </>
+    <TasksPageShell tasks={tasks} teamMembers={teamMembers} currentUserId={currentUserId} />
   );
 }

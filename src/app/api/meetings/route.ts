@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { createClient } from "@/lib/supabase-server";
+import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 
 export async function GET() {
   try {
@@ -29,10 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "title and scheduledAt are required" }, { status: 400 });
     }
 
-    let dbUser = null;
-    if (user?.email) {
-      dbUser = await db.user.findUnique({ where: { email: user.email } });
-    }
+    const dbUser = await getOrCreateDbUser(user);
     if (!dbUser) return NextResponse.json({ error: "User not found" }, { status: 400 });
 
     const meeting = await db.meeting.create({

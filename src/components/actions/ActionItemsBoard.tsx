@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatCard } from "@/components/ui/StatCard";
@@ -34,6 +34,8 @@ interface ActionItemsBoardProps {
     completed: number;
     avgDays: number;
   };
+  openCompose?: boolean;
+  onComposeClose?: () => void;
 }
 
 type FilterStatus = "ALL" | "OPEN" | "IN_PROGRESS" | "DONE" | "BLOCKED";
@@ -80,11 +82,15 @@ function PriorityDot({ priority }: { priority: string }) {
   );
 }
 
-export function ActionItemsBoard({ items: initialItems, stats: initialStats }: ActionItemsBoardProps) {
+export function ActionItemsBoard({ items: initialItems, stats: initialStats, openCompose, onComposeClose }: ActionItemsBoardProps) {
   const [items, setItems] = useState(initialItems);
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
   const [query, setQuery] = useState("");
   const [composing, setComposing] = useState(false);
+
+  useEffect(() => { if (openCompose) setComposing(true); }, [openCompose]);
+
+  const closeCompose = () => { setComposing(false); onComposeClose?.(); };
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState("MEDIUM");
 
@@ -141,7 +147,7 @@ export function ActionItemsBoard({ items: initialItems, stats: initialStats }: A
       }
     } catch { /* silently fail */ }
     setNewTitle("");
-    setComposing(false);
+    closeCompose();
   };
 
   return (
@@ -197,7 +203,7 @@ export function ActionItemsBoard({ items: initialItems, stats: initialStats }: A
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAddAction(); if (e.key === "Escape") setComposing(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddAction(); if (e.key === "Escape") closeCompose(); }}
             placeholder="Action item title…"
             className="w-full bg-transparent text-[14px] font-semibold outline-none placeholder:text-slate-500"
             style={{ color: "#e2e8f0" }}
@@ -211,7 +217,7 @@ export function ActionItemsBoard({ items: initialItems, stats: initialStats }: A
               <option value="LOW">Low priority</option>
             </select>
             <div className="ml-auto flex items-center gap-2">
-              <button onClick={() => setComposing(false)} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
+              <button onClick={closeCompose} className="rounded-md px-3 py-1.5 text-[11.5px] font-medium"
                 style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>Cancel</button>
               <button onClick={handleAddAction} disabled={!newTitle.trim()} className="rounded-md px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-40"
                 style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)" }}>Add action</button>
