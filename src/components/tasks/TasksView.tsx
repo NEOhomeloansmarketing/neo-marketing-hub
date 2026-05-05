@@ -493,7 +493,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
         {grouped.every((g) => g.tasks.length === 0) ? (
           <EmptyState
             title="No tasks yet"
-            description="Click "New task" to create your first task."
+            description={'Click "New task" to create your first task.'}
           />
         ) : (
           grouped.map(({ bucket, tasks: bucketTasks }) => {
