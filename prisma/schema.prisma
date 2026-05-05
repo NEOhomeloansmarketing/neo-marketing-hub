@@ -1,0 +1,433 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  MARKETING_DIRECTOR
+  BRAND_LEAD
+  GROWTH_PM
+  CONTENT_STRATEGIST
+  PERFORMANCE_LEAD
+  DESIGNER
+  MARKETING_COORDINATOR
+  OTHER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskSource {
+  MANUAL
+  MEETING
+  PROJECT
+}
+
+enum TaskScope {
+  TEAM
+  PERSONAL
+}
+
+enum MeetingStatus {
+  UPCOMING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum MeetingRecurrence {
+  ONE_OFF
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum AttendeeRole {
+  HOST
+  ATTENDEE
+  OPTIONAL
+}
+
+enum ActionStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+enum ActionSource {
+  MEETING
+  MANUAL
+}
+
+enum ToolCredKind {
+  SSO
+  SHARED
+  VAULT
+}
+
+enum ToolAccessRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum AdvisorStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AdvisorPlatform {
+  WEBSITE
+  FACEBOOK
+  INSTAGRAM
+  LINKEDIN
+  TIKTOK
+  YOUTUBE
+  ZILLOW
+  GOOGLE_BUSINESS
+  X
+  THREADS
+  OTHER
+}
+
+enum AuditStatus {
+  COMPLIANT
+  ISSUES
+  OVERDUE
+}
+
+enum AuditCheckResult {
+  PASS
+  FAIL
+  NA
+}
+
+enum IssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum IssueStatus {
+  OPEN
+  RESOLVED
+}
+
+enum IdeaStatus {
+  PARKED
+  QUEUED
+  ACTIVE
+  SHIPPED
+  ARCHIVED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      UserRole @default(OTHER)
+  color     String   @default("#5bcbf5")
+  initials  String   @default("")
+  isAdmin   Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meetingsCreated    Meeting[]         @relation("CreatedBy")
+  meetingsAttended   MeetingAttendee[]
+  tasksOwned         Task[]            @relation("TaskOwner")
+  tasksFollowed      TaskFollower[]
+  actionItemsOwned   ActionItem[]      @relation("ActionOwner")
+  actionItemsCreated ActionItem[]      @relation("ActionCreator")
+  toolsOwned         Tool[]
+  toolAccess         ToolAccess[]
+  toolActivities     ToolActivity[]
+  advisorAudits      AdvisorAudit[]
+  advisorIssues      AdvisorIssue[]
+  ideasCreated       Idea[]
+  ideaVotes          IdeaVote[]
+}
+
+model Meeting {
+  id              String            @id @default(cuid())
+  title           String
+  scheduledAt     DateTime
+  durationMinutes Int               @default(60)
+  recurrence      MeetingRecurrence @default(ONE_OFF)
+  recursFromId    String?
+  status          MeetingStatus     @default(UPCOMING)
+  createdById     String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  createdBy    User              @relation("CreatedBy", fields: [createdById], references: [id])
+  recurrFrom   Meeting?          @relation("Recurs", fields: [recursFromId], references: [id])
+  recursCopies Meeting[]         @relation("Recurs")
+  attendees    MeetingAttendee[]
+  sections     MeetingSection[]
+  decisions    MeetingDecision[]
+  actionItems  ActionItem[]
+}
+
+model MeetingAttendee {
+  meetingId String
+  userId    String
+  role      AttendeeRole @default(ATTENDEE)
+  absent    Boolean      @default(false)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@id([meetingId, userId])
+}
+
+model MeetingSection {
+  id        String   @id @default(cuid())
+  meetingId String
+  heading   String
+  bodyMd    String   @default("")
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model MeetingDecision {
+  id        String   @id @default(cuid())
+  meetingId String
+  body      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model ActionItem {
+  id          String       @id @default(cuid())
+  meetingId   String?
+  title       String
+  description String?
+  assigneeId  String?
+  dueDate     DateTime?
+  status      ActionStatus @default(OPEN)
+  priority    TaskPriority @default(MEDIUM)
+  source      ActionSource @default(MANUAL)
+  createdById String
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime     @updatedAt
+
+  meeting   Meeting? @relation(fields: [meetingId], references: [id])
+  assignee  User?    @relation("ActionOwner", fields: [assigneeId], references: [id])
+  createdBy User     @relation("ActionCreator", fields: [createdById], references: [id])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  ownerId     String
+  projectId   String?
+  dueDate     DateTime?
+  dueBucket   String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  scope       TaskScope    @default(TEAM)
+  source      TaskSource   @default(MANUAL)
+  sourceId    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  owner     User           @relation("TaskOwner", fields: [ownerId], references: [id])
+  followers TaskFollower[]
+}
+
+model TaskFollower {
+  taskId String
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([taskId, userId])
+}
+
+model Tool {
+  id                 String       @id @default(cuid())
+  name               String
+  url                String
+  category           String
+  logoUrl            String?
+  ownerUserId        String?
+  plan               String?
+  monthlyCostCents   Int?
+  billingCycle       String?
+  renewsOn           DateTime?
+  paymentMethodLast4 String?
+  vaultLink          String?
+  mfaMethod          String?
+  recoveryContact    String?
+  notesMd            String?
+  lastVerifiedAt     DateTime?
+  credKind           ToolCredKind @default(SHARED)
+  glyph              String?
+  color              String?
+  seats              Int?
+  lastAccessed       String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  owner      User?          @relation(fields: [ownerUserId], references: [id])
+  access     ToolAccess[]
+  activities ToolActivity[]
+}
+
+model ToolAccess {
+  toolId  String
+  userId  String
+  role    ToolAccessRole @default(VIEWER)
+  addedAt DateTime       @default(now())
+
+  tool Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([toolId, userId])
+}
+
+model ToolActivity {
+  id        String   @id @default(cuid())
+  toolId    String
+  userId    String
+  action    String
+  metaJson  Json?
+  createdAt DateTime @default(now())
+
+  tool Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Advisor {
+  id            String        @id @default(cuid())
+  name          String
+  nmlsNumber    String
+  region        String?
+  licenseStates String[]
+  photoUrl      String?
+  email         String?
+  phone         String?
+  status        AdvisorStatus @default(ACTIVE)
+  nextAuditDue  DateTime?
+  initials      String        @default("")
+  color         String        @default("#5bcbf5")
+  brand         String?
+  leader        String?
+  city          String?
+  state         String?
+  auditFormUrl  String?
+  matrixUrl     String?
+  canvaUrl      String?
+  socialToolUrl String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  channels AdvisorChannel[]
+  audits   AdvisorAudit[]
+  issues   AdvisorIssue[]
+}
+
+model AdvisorChannel {
+  id                String          @id @default(cuid())
+  advisorId         String
+  platform          AdvisorPlatform @default(OTHER)
+  url               String
+  lastScreenshotUrl String?
+  lastAuditedAt     DateTime?
+  label             String?
+  createdAt         DateTime        @default(now())
+
+  advisor     Advisor             @relation(fields: [advisorId], references: [id], onDelete: Cascade)
+  auditChecks AdvisorAuditCheck[]
+}
+
+model AdvisorAudit {
+  id        String      @id @default(cuid())
+  advisorId String
+  auditorId String
+  auditedAt DateTime    @default(now())
+  status    AuditStatus @default(COMPLIANT)
+  summaryMd String?
+
+  advisor Advisor             @relation(fields: [advisorId], references: [id], onDelete: Cascade)
+  auditor User                @relation(fields: [auditorId], references: [id])
+  checks  AdvisorAuditCheck[]
+  issues  AdvisorIssue[]
+}
+
+model AdvisorAuditCheck {
+  id            String           @id @default(cuid())
+  auditId       String
+  channelId     String?
+  ruleKey       String
+  result        AuditCheckResult @default(NA)
+  note          String?
+  screenshotUrl String?
+
+  audit   AdvisorAudit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  channel AdvisorChannel? @relation(fields: [channelId], references: [id])
+}
+
+model AdvisorIssue {
+  id          String        @id @default(cuid())
+  advisorId   String
+  auditId     String?
+  severity    IssueSeverity @default(MEDIUM)
+  description String
+  ownerId     String?
+  status      IssueStatus   @default(OPEN)
+  openedAt    DateTime      @default(now())
+  resolvedAt  DateTime?
+
+  advisor Advisor       @relation(fields: [advisorId], references: [id], onDelete: Cascade)
+  audit   AdvisorAudit? @relation(fields: [auditId], references: [id])
+  owner   User?         @relation(fields: [ownerId], references: [id])
+}
+
+model Idea {
+  id        String     @id @default(cuid())
+  title     String
+  body      String?
+  status    IdeaStatus @default(PARKED)
+  authorId  String
+  tags      String[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  author User       @relation(fields: [authorId], references: [id])
+  votes  IdeaVote[]
+}
+
+model IdeaVote {
+  ideaId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([ideaId, userId])
+}
