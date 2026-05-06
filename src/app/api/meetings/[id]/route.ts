@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
+import { getApiUser } from "@/lib/api-auth";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    await requireAuth();
     const meeting = await db.meeting.findUnique({
       where: { id: params.id },
       include: {
@@ -16,31 +18,32 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     });
     if (!meeting) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(meeting);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    await requireAuth();
     const body = await request.json();
-    const meeting = await db.meeting.update({
-      where: { id: params.id },
-      data: body,
-    });
+    const meeting = await db.meeting.update({ where: { id: params.id }, data: body });
     return NextResponse.json(meeting);
-  } catch {
-    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    await requireAuth();
     await db.meeting.delete({ where: { id: params.id } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

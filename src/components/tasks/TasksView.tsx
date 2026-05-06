@@ -119,8 +119,8 @@ function NewTaskPanel({
         }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.error ?? "Something went wrong. Try again.");
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? `Error ${res.status} — check console`);
         setSaving(false);
         return;
       }

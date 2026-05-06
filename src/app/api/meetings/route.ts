@@ -1,28 +1,28 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
-import { createClient } from "@/lib/supabase-server";
+import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 
 export async function GET() {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    await requireAuth();
     const meetings = await db.meeting.findMany({
       include: { attendees: { include: { user: true } }, actionItems: true },
       orderBy: { scheduledAt: "desc" },
     });
     return NextResponse.json(meetings);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  try {
-    await requireAuth();
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  try {
     const body = await request.json();
     const { title, scheduledAt, durationMinutes, recurrence, attendeeIds, sections } = body;
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     const dbUser = await getOrCreateDbUser(user);
-    if (!dbUser) return NextResponse.json({ error: "User not found" }, { status: 400 });
+    if (!dbUser) return NextResponse.json({ error: "Could not resolve user" }, { status: 400 });
 
     const meeting = await db.meeting.create({
       data: {
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(meeting, { status: 201 });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("POST /api/meetings error:", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

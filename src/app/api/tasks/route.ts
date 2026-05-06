@@ -1,28 +1,28 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
-import { createClient } from "@/lib/supabase-server";
+import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 
 export async function GET() {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    await requireAuth();
     const tasks = await db.task.findMany({
       include: { owner: true, followers: { include: { user: true } } },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(tasks);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  try {
-    await requireAuth();
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  try {
     const body = await request.json();
     const { title, description, ownerId, projectId, dueBucket, dueDate, priority, scope } = body;
 
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     }
 
     if (!resolvedOwnerId) {
-      return NextResponse.json({ error: "ownerId required" }, { status: 400 });
+      return NextResponse.json({ error: "Could not resolve owner — user not found in DB" }, { status: 400 });
     }
 
     const task = await db.task.create({
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(task, { status: 201 });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("POST /api/tasks error:", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

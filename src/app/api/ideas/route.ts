@@ -1,36 +1,36 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
-import { createClient } from "@/lib/supabase-server";
+import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 
 export async function GET() {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    await requireAuth();
     const ideas = await db.idea.findMany({
       where: { status: { not: "ARCHIVED" } },
       include: { author: true, votes: true },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(ideas);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  try {
-    await requireAuth();
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  try {
     const body = await request.json();
     const { title, body: ideaBody, tags } = body;
 
     if (!title) return NextResponse.json({ error: "title is required" }, { status: 400 });
 
     const dbUser = await getOrCreateDbUser(user);
-    if (!dbUser) return NextResponse.json({ error: "User not found" }, { status: 400 });
+    if (!dbUser) return NextResponse.json({ error: "Could not resolve user" }, { status: 400 });
 
     const idea = await db.idea.create({
       data: {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       include: { author: true, votes: true },
     });
 
-    const result = {
+    return NextResponse.json({
       id: idea.id,
       title: idea.title,
       body: idea.body,
@@ -58,11 +58,9 @@ export async function POST(request: Request) {
       votedByCurrentUser: true,
       commentCount: 0,
       createdAt: idea.createdAt.toISOString(),
-    };
-
-    return NextResponse.json(result, { status: 201 });
+    }, { status: 201 });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("POST /api/ideas error:", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

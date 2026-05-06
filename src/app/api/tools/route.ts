@@ -1,54 +1,46 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
-import { createClient } from "@/lib/supabase-server";
+import { getApiUser } from "@/lib/api-auth";
+import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 
 export async function GET() {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    await requireAuth();
     const tools = await db.tool.findMany({
       include: { owner: true },
       orderBy: { name: "asc" },
     });
     return NextResponse.json(tools);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  try {
-    await requireAuth();
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  try {
     const body = await request.json();
     const { name, url, category, credKind, seats, notesMd, vaultLink, ownerUserId } = body;
 
     if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
     let resolvedOwnerUserId = ownerUserId;
-    if (!resolvedOwnerUserId && user?.email) {
-      const dbUser = await db.user.findUnique({ where: { email: user.email } });
+    if (!resolvedOwnerUserId) {
+      const dbUser = await getOrCreateDbUser(user);
       resolvedOwnerUserId = dbUser?.id;
     }
 
     const tool = await db.tool.create({
-      data: {
-        name,
-        url,
-        category,
-        credKind: credKind ?? "SHARED",
-        seats,
-        notesMd,
-        vaultLink,
-        ownerUserId: resolvedOwnerUserId,
-      },
+      data: { name, url, category, credKind: credKind ?? "SHARED", seats, notesMd, vaultLink, ownerUserId: resolvedOwnerUserId },
       include: { owner: true },
     });
     return NextResponse.json(tool, { status: 201 });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("POST /api/tools error:", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
