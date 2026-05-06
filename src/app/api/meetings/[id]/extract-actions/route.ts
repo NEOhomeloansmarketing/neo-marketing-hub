@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
+import { getApiUser } from "@/lib/api-auth";
+import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 import Anthropic from "@anthropic-ai/sdk";
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    await requireAuth();
+    const dbUser = await getOrCreateDbUser(user);
+    if (!dbUser) return NextResponse.json({ error: "Could not resolve user" }, { status: 400 });
 
     const meeting = await db.meeting.findUnique({
       where: { id: params.id },
@@ -18,7 +22,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }
 
     const client = new Anthropic();
-    const notesText = meeting.sections.map((s) => `## ${s.title}\n${s.body ?? ""}`).join("\n\n");
+    const notesText = meeting.sections.map((s) => `## ${s.heading}\n${s.bodyMd ?? ""}`).join("\n\n");
     const attendeeNames = meeting.attendees.map((a) => a.user.name).join(", ");
 
     const message = await client.messages.create({
@@ -62,6 +66,7 @@ Return ONLY the JSON array, no other text.`,
             dueDate: item.dueDate ? new Date(item.dueDate) : null,
             meetingId: meeting.id,
             assigneeId,
+            createdById: dbUser.id,
           },
         });
       })

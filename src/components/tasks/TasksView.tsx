@@ -629,6 +629,23 @@ function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id: string
 }
 
 // ─── Task detail drawer ─────────────────────────────────────────────────────
+interface TaskAttachment {
+  id: string;
+  name: string;
+  url: string;
+  size: number;
+  mimeType: string;
+  createdAt: string;
+  uploadedBy: { id: string; name: string; initials?: string; color?: string };
+}
+
+interface TaskComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string; color?: string; initials?: string };
+}
+
 function TaskDetailDrawer({
   task,
   teamMembers,
@@ -650,6 +667,27 @@ function TaskDetailDrawer({
   const [editDueDate, setEditDueDate] = useState(task.dueDate ? task.dueDate.slice(0, 10) : "");
   const [editBucket, setEditBucket] = useState(task.dueBucket ?? "later");
   const [saving, setSaving] = useState(false);
+
+  // Comments
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
+
+  // Attachments
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  useEffect(() => {
+    setCommentsLoading(true);
+    Promise.all([
+      fetch(`/api/tasks/${task.id}/comments`).then((r) => r.json()),
+      fetch(`/api/tasks/${task.id}/attachments`).then((r) => r.json()),
+    ]).then(([commentData, attachmentData]) => {
+      if (Array.isArray(commentData)) setComments(commentData);
+      if (Array.isArray(attachmentData)) setAttachments(attachmentData);
+    }).finally(() => setCommentsLoading(false));
+  }, [task.id]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -692,6 +730,60 @@ function TaskDetailDrawer({
     }
     onClose();
   };
+
+  const handlePostComment = async () => {
+    if (!commentDraft.trim()) return;
+    setPostingComment(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: commentDraft.trim() }),
+      });
+      if (res.ok) {
+        const newComment = await res.json();
+        setComments((prev) => [...prev, newComment]);
+        setCommentDraft("");
+      }
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/tasks/${task.id}/attachments`, { method: "POST", body: fd });
+      if (res.ok) {
+        const newAttachment = await res.json();
+        setAttachments((prev) => [newAttachment, ...prev]);
+      }
+    } finally {
+      setUploadingFile(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    await fetch(`/api/tasks/${task.id}/attachments`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachmentId }),
+    });
+    setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const isImage = (mime: string) => mime.startsWith("image/");
 
   const SectionLabel = ({ children }: { children: React.ReactNode }) => (
     <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>{children}</div>
@@ -787,9 +879,134 @@ function TaskDetailDrawer({
             <SectionLabel>Notes / description</SectionLabel>
             <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
               placeholder="Add context, links, or details…"
-              rows={6}
+              rows={5}
               className="w-full resize-none rounded-lg px-3 py-2.5 text-[13px] leading-relaxed outline-none placeholder:text-slate-600"
               style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }} />
+          </div>
+
+          {/* Attachments */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Attachments</div>
+                {attachments.length > 0 && (
+                  <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "rgba(91,203,245,0.15)", color: "#5bcbf5" }}>
+                    {attachments.length}
+                  </span>
+                )}
+              </div>
+              <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition"
+                style={{ background: "rgba(91,203,245,0.10)", color: "#5bcbf5", border: "1px solid rgba(91,203,245,0.25)" }}>
+                {uploadingFile ? "Uploading…" : (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                    Upload
+                  </>
+                )}
+                <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploadingFile} />
+              </label>
+            </div>
+            {attachments.length === 0 ? (
+              <div className="rounded-lg py-4 text-center text-[12px]" style={{ border: "1px dashed #1d4368", color: "#5d6566" }}>
+                No attachments — upload files, images, or documents
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {attachments.map((a) => (
+                  <div key={a.id} className="flex items-center gap-3 rounded-lg px-3 py-2.5 group"
+                    style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                    {isImage(a.mimeType) ? (
+                      <div className="h-8 w-8 shrink-0 rounded overflow-hidden" style={{ border: "1px solid #1d4368" }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={a.url} alt={a.name} className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded" style={{ background: "#14375a" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="1.8" strokeLinecap="round">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <a href={a.url} target="_blank" rel="noopener noreferrer"
+                        className="block truncate text-[12.5px] font-medium hover:underline" style={{ color: "#e2e8f0" }}>
+                        {a.name}
+                      </a>
+                      <div className="text-[10.5px]" style={{ color: "#5d6566" }}>
+                        {formatBytes(a.size)} · {a.uploadedBy.name}
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteAttachment(a.id)}
+                      className="grid h-6 w-6 place-items-center rounded opacity-0 group-hover:opacity-100 transition"
+                      style={{ color: "#5d6566" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Comments */}
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Comments</div>
+              {comments.length > 0 && (
+                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "rgba(91,203,245,0.15)", color: "#5bcbf5" }}>
+                  {comments.length}
+                </span>
+              )}
+            </div>
+
+            {commentsLoading ? (
+              <div className="text-[12px]" style={{ color: "#5d6566" }}>Loading…</div>
+            ) : comments.length === 0 ? (
+              <div className="rounded-lg py-4 text-center text-[12px]" style={{ border: "1px dashed #1d4368", color: "#5d6566" }}>
+                No comments yet — be the first to add one
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {comments.map((c) => (
+                  <div key={c.id} className="flex gap-3">
+                    <Avatar name={c.author.name} color={c.author.color} initials={c.author.initials} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className="text-[12px] font-semibold" style={{ color: "#e2e8f0" }}>{c.author.name}</span>
+                        <span className="text-[10.5px]" style={{ color: "#5d6566" }}>
+                          {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <div className="rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed whitespace-pre-wrap" style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }}>
+                        {c.body}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* New comment input */}
+            <div className="mt-3 flex gap-2">
+              <textarea
+                value={commentDraft}
+                onChange={(e) => setCommentDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handlePostComment(); }}
+                placeholder="Write a comment… (⌘↵ to post)"
+                rows={2}
+                className="flex-1 resize-none rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed outline-none placeholder:text-slate-600"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }}
+              />
+              <button
+                onClick={handlePostComment}
+                disabled={postingComment || !commentDraft.trim()}
+                className="self-end rounded-lg px-3 py-2.5 text-[12px] font-bold text-white disabled:opacity-40 transition"
+                style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", minWidth: "60px" }}
+              >
+                {postingComment ? "…" : "Post"}
+              </button>
+            </div>
           </div>
         </div>
 

@@ -19,6 +19,12 @@ enum UserRole {
   OTHER
 }
 
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -135,6 +141,33 @@ enum IdeaStatus {
   ARCHIVED
 }
 
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  color       String   @default("#5bcbf5")
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  TeamMember[]
+  tasks    Task[]
+  meetings Meeting[]
+  ideas    Idea[]
+}
+
+model TeamMember {
+  teamId   String
+  userId   String
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([teamId, userId])
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -147,10 +180,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  teams              TeamMember[]
   meetingsCreated    Meeting[]         @relation("CreatedBy")
   meetingsAttended   MeetingAttendee[]
   tasksOwned         Task[]            @relation("TaskOwner")
   tasksFollowed      TaskFollower[]
+  taskComments       TaskComment[]
+  taskAttachments    TaskAttachment[]
   actionItemsOwned   ActionItem[]      @relation("ActionOwner")
   actionItemsCreated ActionItem[]      @relation("ActionCreator")
   toolsOwned         Tool[]
@@ -171,10 +207,12 @@ model Meeting {
   recursFromId    String?
   status          MeetingStatus     @default(UPCOMING)
   createdById     String
+  teamId          String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
   createdBy    User              @relation("CreatedBy", fields: [createdById], references: [id])
+  team         Team?             @relation(fields: [teamId], references: [id])
   recurrFrom   Meeting?          @relation("Recurs", fields: [recursFromId], references: [id])
   recursCopies Meeting[]         @relation("Recurs")
   attendees    MeetingAttendee[]
@@ -228,6 +266,7 @@ model ActionItem {
   priority    TaskPriority @default(MEDIUM)
   source      ActionSource @default(MANUAL)
   createdById String
+  taskId      String?
   createdAt   DateTime     @default(now())
   completedAt DateTime?
   updatedAt   DateTime     @updatedAt
@@ -235,26 +274,36 @@ model ActionItem {
   meeting   Meeting? @relation(fields: [meetingId], references: [id])
   assignee  User?    @relation("ActionOwner", fields: [assigneeId], references: [id])
   createdBy User     @relation("ActionCreator", fields: [createdById], references: [id])
+  task      Task?    @relation(fields: [taskId], references: [id])
 }
 
 model Task {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
-  ownerId     String
-  projectId   String?
-  dueDate     DateTime?
-  dueBucket   String?
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
-  scope       TaskScope    @default(TEAM)
-  source      TaskSource   @default(MANUAL)
-  sourceId    String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  ownerId      String
+  teamId       String?
+  projectId    String?
+  parentTaskId String?
+  dueDate      DateTime?
+  dueBucket    String?
+  status       TaskStatus   @default(TODO)
+  priority     TaskPriority @default(MEDIUM)
+  scope        TaskScope    @default(TEAM)
+  source       TaskSource   @default(MANUAL)
+  sourceId     String?
+  labels       String[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  owner     User           @relation("TaskOwner", fields: [ownerId], references: [id])
-  followers TaskFollower[]
+  owner       User             @relation("TaskOwner", fields: [ownerId], references: [id])
+  team        Team?            @relation(fields: [teamId], references: [id])
+  parent      Task?            @relation("Subtasks", fields: [parentTaskId], references: [id])
+  subtasks    Task[]           @relation("Subtasks")
+  followers   TaskFollower[]
+  comments    TaskComment[]
+  attachments TaskAttachment[]
+  actionItems ActionItem[]
 }
 
 model TaskFollower {
@@ -265,6 +314,32 @@ model TaskFollower {
   user User @relation(fields: [userId], references: [id])
 
   @@id([taskId, userId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+}
+
+model TaskAttachment {
+  id           String   @id @default(cuid())
+  taskId       String
+  uploadedById String
+  name         String
+  url          String
+  size         Int?
+  mimeType     String?
+  createdAt    DateTime @default(now())
+
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy User @relation(fields: [uploadedById], references: [id])
 }
 
 model Tool {
@@ -413,11 +488,13 @@ model Idea {
   body      String?
   status    IdeaStatus @default(PARKED)
   authorId  String
+  teamId    String?
   tags      String[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
   author User       @relation(fields: [authorId], references: [id])
+  team   Team?      @relation(fields: [teamId], references: [id])
   votes  IdeaVote[]
 }
 
