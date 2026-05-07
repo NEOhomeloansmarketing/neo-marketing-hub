@@ -14,6 +14,8 @@ export default async function DashboardPage() {
     totalTools: 0,
     totalAdvisors: 0,
     totalIdeas: 0,
+    openRequests: 0,
+    newRequests: 0,
   };
 
   let recentMeetings: {
@@ -22,6 +24,15 @@ export default async function DashboardPage() {
     scheduledAt: Date;
     durationMinutes: number;
     actionItems: { status: string }[];
+  }[] = [];
+
+  let recentRequests: {
+    id: string;
+    title: string;
+    requestType: string;
+    status: string;
+    advisorName: string | null;
+    createdAt: Date;
   }[] = [];
 
   let recentActions: {
@@ -35,15 +46,15 @@ export default async function DashboardPage() {
 
   try {
     const now = new Date();
-    const [tasks, actions, meetings, tools, advisors, ideas] = await Promise.all([
+    const [tasks, actions, meetings, tools, advisors, ideas, openReqs, newReqs] = await Promise.all([
       db.task.count({ where: { status: { not: "DONE" } } }),
       db.actionItem.count({ where: { status: { not: "DONE" } } }),
-      db.meeting.count({
-        where: { scheduledAt: { gte: now }, status: "UPCOMING" },
-      }),
+      db.meeting.count({ where: { scheduledAt: { gte: now }, status: "UPCOMING" } }),
       db.tool.count(),
       db.advisor.count({ where: { status: "ACTIVE" } }),
       db.idea.count({ where: { status: { not: "ARCHIVED" } } }),
+      db.marketingRequest.count({ where: { status: { notIn: ["DELIVERED", "ARCHIVED"] } } }),
+      db.marketingRequest.count({ where: { status: "NEW" } }),
     ]);
 
     stats = {
@@ -53,7 +64,16 @@ export default async function DashboardPage() {
       totalTools: tools,
       totalAdvisors: advisors,
       totalIdeas: ideas,
+      openRequests: openReqs,
+      newRequests: newReqs,
     };
+
+    recentRequests = await db.marketingRequest.findMany({
+      where: { status: { notIn: ["DELIVERED", "ARCHIVED"] } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: { id: true, title: true, requestType: true, status: true, advisorName: true, createdAt: true },
+    });
 
     recentMeetings = await db.meeting.findMany({
       take: 5,
@@ -90,10 +110,12 @@ export default async function DashboardPage() {
       <div className="mt-6 space-y-6">
         {/* Top stats */}
         <div className="grid grid-cols-12 gap-3">
-          <StatCard span={3} label="Open tasks" value={String(stats.openTasks)} delta="across team" />
-          <StatCard span={3} label="Action items" value={String(stats.openActions)} delta="needs attention" tone="indigo" />
-          <StatCard span={3} label="Upcoming meetings" value={String(stats.upcomingMeetings)} delta="this week" tone="green" />
-          <StatCard span={3} label="Active advisors" value={String(stats.totalAdvisors)} delta="in compliance" tone="green" />
+          <StatCard span={4} label="Open tasks" value={String(stats.openTasks)} delta="across team" />
+          <StatCard span={4} label="Action items" value={String(stats.openActions)} delta="needs attention" tone="indigo" />
+          <StatCard span={4} label="Upcoming meetings" value={String(stats.upcomingMeetings)} delta="this week" tone="green" />
+          <StatCard span={4} label="Active advisors" value={String(stats.totalAdvisors)} delta="in compliance" tone="green" />
+          <StatCard span={4} label="Open requests" value={String(stats.openRequests)} delta="in pipeline" tone="indigo" />
+          <StatCard span={4} label="New requests" value={String(stats.newRequests)} delta="need review" />
         </div>
 
         <div className="grid grid-cols-12 gap-5">
@@ -247,6 +269,55 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Recent marketing requests */}
+        <div className="rounded-lg overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #1d4368" }}>
+            <div className="text-[12px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.12em" }}>
+              Open marketing requests
+            </div>
+            <Link href="/requests" className="text-[11.5px] font-medium" style={{ color: "#5bcbf5" }}>
+              View pipeline →
+            </Link>
+          </div>
+          {recentRequests.length === 0 ? (
+            <div className="px-4 py-10 text-center text-[13px]" style={{ color: "#858889" }}>
+              No open requests.{" "}
+              <Link href="/requests" style={{ color: "#5bcbf5" }}>Go to pipeline.</Link>
+            </div>
+          ) : (
+            recentRequests.map((r, i) => {
+              const statusColor: Record<string, string> = {
+                NEW: "#5bcbf5", IN_REVIEW: "#f59e0b", IN_PRODUCTION: "#6366f1",
+                READY_FOR_REVIEW: "#a855f7", DELIVERED: "#22c55e",
+              };
+              const statusLabel: Record<string, string> = {
+                NEW: "New", IN_REVIEW: "In Review", IN_PRODUCTION: "In Production",
+                READY_FOR_REVIEW: "Ready", DELIVERED: "Delivered",
+              };
+              const color = statusColor[r.status] ?? "#858889";
+              return (
+                <Link
+                  key={r.id}
+                  href="/requests"
+                  className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-white/[0.02]"
+                  style={{ borderBottom: i === recentRequests.length - 1 ? "none" : "1px solid #1d4368" }}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-semibold text-slate-100">{r.title}</div>
+                    <div className="mt-0.5 text-[11px]" style={{ color: "#858889" }}>
+                      {r.advisorName ?? "Manual"}{r.requestType ? ` · ${r.requestType}` : ""}
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full px-2 py-[2px] text-[10px] font-semibold"
+                    style={{ background: color + "22", color, border: `1px solid ${color}44` }}>
+                    {statusLabel[r.status] ?? r.status}
+                  </span>
+                </Link>
+              );
+            })
+          )}
         </div>
 
         {/* Quick links */}
