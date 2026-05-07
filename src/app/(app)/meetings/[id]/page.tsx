@@ -65,6 +65,7 @@ export default async function MeetingDetailPage({
       dueDate: a.dueDate?.toISOString() ?? null,
       status: a.status,
       source: a.source,
+      taskId: a.taskId ?? null,
     })),
     attendees: meeting.attendees.map((a) => ({
       id: a.user.id,

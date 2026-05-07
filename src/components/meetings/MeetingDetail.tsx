@@ -19,6 +19,7 @@ interface ActionItem {
   dueDate?: string | null;
   status: string;
   source: string;
+  taskId?: string | null;
 }
 
 interface Section {
@@ -86,7 +87,15 @@ function SectionBlock({ title, right, children }: { title: string; right?: React
   );
 }
 
-function ActionItemRow({ item, onToggle }: { item: ActionItem; onToggle: (id: string) => void }) {
+function ActionItemRow({
+  item,
+  onToggle,
+  onConvertToTask,
+}: {
+  item: ActionItem;
+  onToggle: (id: string) => void;
+  onConvertToTask: (id: string) => void;
+}) {
   const done = item.status === "DONE";
   return (
     <div
@@ -132,7 +141,7 @@ function ActionItemRow({ item, onToggle }: { item: ActionItem; onToggle: (id: st
               Due {new Date(item.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
             </span>
           )}
-          {item.source === "MEETING" && (
+          {item.source === "MEETING" && !item.taskId && (
             <span
               className="text-[10px] font-medium uppercase"
               style={{ color: "#5bcbf5", letterSpacing: "0.08em" }}
@@ -140,14 +149,50 @@ function ActionItemRow({ item, onToggle }: { item: ActionItem; onToggle: (id: st
               AI extracted
             </span>
           )}
+          {item.taskId && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium" style={{ color: "#22c55e" }}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Task created
+            </span>
+          )}
         </div>
       </div>
+      {!item.taskId && (
+        <button
+          onClick={() => onConvertToTask(item.id)}
+          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium opacity-0 transition group-hover:opacity-100"
+          style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
+          title="Convert to task"
+        >
+          → Task
+        </button>
+      )}
     </div>
   );
 }
 
+const inputStyle: React.CSSProperties = {
+  background: "#0a2540",
+  border: "1px solid #1d4368",
+  borderRadius: 6,
+  color: "#e2e8f0",
+  fontSize: 12,
+  padding: "6px 10px",
+  width: "100%",
+  outline: "none",
+};
+
 export function MeetingDetail({ meeting }: MeetingDetailProps) {
   const [actionItems, setActionItems] = useState(meeting.actionItems);
+  const [addingAction, setAddingAction] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
+  const [newCreateTask, setNewCreateTask] = useState(false);
+  const [addLoading, setAddLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const toggleAction = async (id: string) => {
     setActionItems((items) =>
@@ -155,7 +200,6 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
         a.id === id ? { ...a, status: a.status === "DONE" ? "OPEN" : "DONE" } : a
       )
     );
-    // Optimistic — persist in background
     const item = actionItems.find((a) => a.id === id);
     if (!item) return;
     await fetch(`/api/actions/${id}`, {
@@ -163,6 +207,71 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: item.status === "DONE" ? "OPEN" : "DONE" }),
     });
+  };
+
+  const convertToTask = async (id: string) => {
+    const res = await fetch(`/api/actions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ convertToTask: true }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setActionItems((items) =>
+        items.map((a) => (a.id === id ? { ...a, taskId: updated.taskId } : a))
+      );
+    }
+  };
+
+  const handleAddAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    setAddLoading(true);
+    const res = await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: newTitle.trim(),
+        meetingId: meeting.id,
+        assigneeId: newAssigneeId || undefined,
+        dueDate: newDueDate || undefined,
+        createTask: newCreateTask,
+      }),
+    });
+    if (res.ok) {
+      const created = await res.json();
+      const assignee = meeting.attendees.find((a) => a.id === newAssigneeId) ?? null;
+      setActionItems((prev) => [
+        ...prev,
+        {
+          id: created.id,
+          title: created.title,
+          assignee: assignee ? { id: assignee.id, name: assignee.name, color: assignee.color, initials: assignee.initials } : null,
+          dueDate: created.dueDate ?? null,
+          status: created.status,
+          source: created.source,
+          taskId: created.taskId ?? null,
+        },
+      ]);
+      setNewTitle("");
+      setNewAssigneeId("");
+      setNewDueDate("");
+      setNewCreateTask(false);
+      setAddingAction(false);
+    }
+    setAddLoading(false);
+  };
+
+  const handleExtractAI = async () => {
+    setExtracting(true);
+    const res = await fetch(`/api/meetings/${meeting.id}/extract-actions`, { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.created?.length) {
+        setActionItems((prev) => [...prev, ...data.created]);
+      }
+    }
+    setExtracting(false);
   };
 
   const attended = meeting.attendees.filter((a) => !a.absent);
@@ -286,14 +395,7 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
 
           {/* Discussion notes / sections */}
           {meeting.sections.length > 0 && (
-            <SectionBlock
-              title="Discussion notes"
-              right={
-                <button className="text-[11px] font-medium" style={{ color: "#a8aaab" }}>
-                  + Add item
-                </button>
-              }
-            >
+            <SectionBlock title="Discussion notes">
               <div className="space-y-3">
                 {[...meeting.sections]
                   .sort((a, b) => a.position - b.position)
@@ -355,32 +457,99 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
           <SectionBlock
             title="Action items"
             right={
-              <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-semibold"
-                style={{ background: "#5bcbf522", color: "#5bcbf5", border: "1px solid #5bcbf544" }}
+              <button
+                onClick={() => setAddingAction(true)}
+                className="text-[11px] font-semibold transition hover:opacity-80"
+                style={{ color: "#5bcbf5" }}
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2L9.5 8.5 3 9.27l5 4.87L6.18 21 12 17.77 17.82 21 16 14.14l5-4.87-6.5-.77L12 2z" />
-                </svg>
-                {actionItems.length} items
-              </span>
+                + Add
+              </button>
             }
           >
-            {actionItems.length === 0 ? (
+            {actionItems.length === 0 && !addingAction ? (
               <p className="text-[12px] text-center py-4" style={{ color: "#858889" }}>
                 No action items yet.
               </p>
             ) : (
               <div className="space-y-1.5">
                 {actionItems.map((a) => (
-                  <ActionItemRow key={a.id} item={a} onToggle={toggleAction} />
+                  <ActionItemRow key={a.id} item={a} onToggle={toggleAction} onConvertToTask={convertToTask} />
                 ))}
               </div>
             )}
 
+            {/* Add action item form */}
+            {addingAction && (
+              <form
+                onSubmit={handleAddAction}
+                className="mt-3 space-y-2 rounded-md p-3"
+                style={{ background: "#0a2540", border: "1px solid #1d4368" }}
+              >
+                <input
+                  autoFocus
+                  placeholder="Action item title…"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  style={inputStyle}
+                />
+                <select
+                  value={newAssigneeId}
+                  onChange={(e) => setNewAssigneeId(e.target.value)}
+                  style={{ ...inputStyle, color: newAssigneeId ? "#e2e8f0" : "#858889" }}
+                >
+                  <option value="">Assign to… (optional)</option>
+                  {meeting.attendees.filter((a) => !a.absent).map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={newDueDate}
+                  onChange={(e) => setNewDueDate(e.target.value)}
+                  style={{ ...inputStyle, color: newDueDate ? "#e2e8f0" : "#858889" }}
+                />
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={newCreateTask}
+                    onChange={(e) => setNewCreateTask(e.target.checked)}
+                    className="rounded"
+                    style={{ accentColor: "#5bcbf5" }}
+                  />
+                  <span className="text-[11.5px]" style={{ color: "#a8aaab" }}>Also create a task</span>
+                </label>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={addLoading || !newTitle.trim()}
+                    className="flex-1 rounded py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+                    style={{ background: "#5bcbf5", color: "#0a2540" }}
+                  >
+                    {addLoading ? "Saving…" : "Add item"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingAction(false);
+                      setNewTitle("");
+                      setNewAssigneeId("");
+                      setNewDueDate("");
+                      setNewCreateTask(false);
+                    }}
+                    className="rounded px-3 py-1.5 text-[11.5px] font-medium transition hover:brightness-110"
+                    style={{ background: "#14375a", color: "#a8aaab", border: "1px solid #1d4368" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
             {/* Extract with AI */}
             <button
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md py-2 text-[12px] font-semibold transition hover:brightness-110"
+              onClick={handleExtractAI}
+              disabled={extracting}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md py-2 text-[12px] font-semibold transition hover:brightness-110 disabled:opacity-60"
               style={{
                 background: "rgba(91,203,245,0.08)",
                 border: "1px dashed rgba(91,203,245,0.4)",
@@ -390,7 +559,7 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2L9.5 8.5 3 9.27l5 4.87L6.18 21 12 17.77 17.82 21 16 14.14l5-4.87-6.5-.77L12 2z" />
               </svg>
-              Extract action items with AI
+              {extracting ? "Extracting…" : "Extract action items with AI"}
             </button>
           </SectionBlock>
         </div>
