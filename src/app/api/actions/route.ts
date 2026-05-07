@@ -12,7 +12,7 @@ export async function GET() {
 
   try {
     const actions = await db.actionItem.findMany({
-      where: activeTeamId ? { teamId: activeTeamId } : undefined,
+      where: activeTeamId ? { OR: [{ teamId: activeTeamId }, { teamId: null }] } : undefined,
       include: { assignee: true, meeting: { select: { id: true, title: true } } },
       orderBy: { createdAt: "desc" },
     });

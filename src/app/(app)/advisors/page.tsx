@@ -14,7 +14,7 @@ export default async function AdvisorsPage() {
 
   try {
     const rawAdvisors = await db.advisor.findMany({
-      where: activeTeamId ? { teamId: activeTeamId } : undefined,
+      where: activeTeamId ? { OR: [{ teamId: activeTeamId }, { teamId: null }] } : undefined,
       include: {
         channels: true,
         issues: { where: { status: "OPEN" } },

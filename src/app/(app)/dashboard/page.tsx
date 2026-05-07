@@ -46,7 +46,7 @@ export default async function DashboardPage() {
   }[] = [];
 
   const activeTeamId = await getActiveTeamId();
-  const teamFilter = activeTeamId ? { teamId: activeTeamId } : {};
+  const teamFilter = activeTeamId ? { OR: [{ teamId: activeTeamId }, { teamId: null }] } : {};
 
   try {
     const now = new Date();

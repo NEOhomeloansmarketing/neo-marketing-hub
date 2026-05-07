@@ -14,7 +14,7 @@ export default async function ToolsPage() {
 
   try {
     const rawTools = await db.tool.findMany({
-      where: activeTeamId ? { teamId: activeTeamId } : undefined,
+      where: activeTeamId ? { OR: [{ teamId: activeTeamId }, { teamId: null }] } : undefined,
       include: { owner: true },
       orderBy: { name: "asc" },
     });

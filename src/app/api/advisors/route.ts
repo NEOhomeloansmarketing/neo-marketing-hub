@@ -9,7 +9,7 @@ export async function GET() {
   const activeTeamId = await getActiveTeamId();
   try {
     const advisors = await db.advisor.findMany({
-      where: activeTeamId ? { teamId: activeTeamId } : undefined,
+      where: activeTeamId ? { OR: [{ teamId: activeTeamId }, { teamId: null }] } : undefined,
       include: { channels: true, issues: { where: { status: "OPEN" } } },
       orderBy: { name: "asc" },
     });
