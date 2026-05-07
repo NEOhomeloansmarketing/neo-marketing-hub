@@ -586,6 +586,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
           onClose={() => setOpenTask(null)}
           onToggle={toggle}
           onUpdate={(updated) => setTasks((ts) => ts.map((t) => t.id === updated.id ? updated : t))}
+          onDelete={(id) => { setTasks((ts) => ts.filter((t) => t.id !== id)); setOpenTask(null); }}
         />
       )}
     </div>
@@ -707,12 +708,14 @@ function TaskDetailDrawer({
   onClose,
   onToggle,
   onUpdate,
+  onDelete,
 }: {
   task: Task;
   teamMembers: TasksViewProps["teamMembers"];
   onClose: () => void;
   onToggle: (id: string) => void;
   onUpdate: (t: Task) => void;
+  onDelete: (id: string) => void;
 }) {
   const done = task.status === "DONE";
   const [editTitle, setEditTitle] = useState(task.title);
@@ -866,11 +869,27 @@ function TaskDetailDrawer({
               {done ? "Completed" : "Open"}
             </span>
           </div>
-          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-white/[0.06]" style={{ color: "#a8aaab" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={async () => {
+                if (!confirm("Delete this task? This cannot be undone.")) return;
+                await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+                onDelete(task.id);
+              }}
+              className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-red-500/10"
+              style={{ color: "#5d6566" }}
+              title="Delete task"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+              </svg>
+            </button>
+            <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-white/[0.06]" style={{ color: "#a8aaab" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Body */}

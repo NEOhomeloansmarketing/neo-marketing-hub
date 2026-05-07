@@ -381,6 +381,21 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
           )}
 
           {/* Start / End */}
+          <button
+            onClick={async () => {
+              if (!confirm("Delete this meeting and all its data? This cannot be undone.")) return;
+              await fetch(`/api/meetings/${meeting.id}`, { method: "DELETE" });
+              window.location.href = "/meetings";
+            }}
+            className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-red-500/10"
+            style={{ color: "#5d6566", border: "1px solid #1d4368" }}
+            title="Delete meeting"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+            </svg>
+          </button>
+
           {status === "UPCOMING" && (
             <button
               onClick={startMeeting}

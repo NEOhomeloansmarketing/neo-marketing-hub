@@ -30,3 +30,13 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 }
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  try {
+    await requireAuth();
+    await db.advisor.delete({ where: { id: params.id } });
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+  }
+}

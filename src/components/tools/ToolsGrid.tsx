@@ -75,8 +75,9 @@ function ToolGlyph({ tool, size = 36 }: { tool: Tool; size?: number }) {
   );
 }
 
-function ToolDrawerContent({ tool, onClose }: { tool: Tool; onClose: () => void }) {
+function ToolDrawerContent({ tool, onClose, onDelete }: { tool: Tool; onClose: () => void; onDelete: (id: string) => void }) {
   const [passwordShown, setPasswordShown] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   return (
     <>
@@ -102,7 +103,26 @@ function ToolDrawerContent({ tool, onClose }: { tool: Tool; onClose: () => void 
             </a>
           </div>
         </div>
-        <DrawerCloseButton onClose={onClose} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              if (!confirm(`Delete "${tool.name}"? This cannot be undone.`)) return;
+              setDeleting(true);
+              await fetch(`/api/tools/${tool.id}`, { method: "DELETE" });
+              onDelete(tool.id);
+              onClose();
+            }}
+            disabled={deleting}
+            className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-red-500/10 disabled:opacity-50"
+            style={{ color: "#5d6566", border: "1px solid #1d4368" }}
+            title="Delete tool"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+            </svg>
+          </button>
+          <DrawerCloseButton onClose={onClose} />
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -333,36 +353,6 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
 
   return (
     <div className="space-y-5">
-      {/* Stats */}
-      <div className="grid grid-cols-12 gap-3">
-        <StatCard span={3} label="Tools tracked" value={String(tools.length)} delta="across all categories" />
-        <StatCard span={3} label="SSO-protected" value={String(ssoCount)} delta={`${Math.round((ssoCount / tools.length) * 100)}% of tools`} tone="green" />
-        <StatCard span={3} label="Total seats" value={String(tools.reduce((s, t) => s + (t.seats ?? 0), 0))} delta="in use" tone="indigo" />
-        <StatCard span={3} label="Renewals next 30d" value="2" delta="check billing" />
-      </div>
-
-      {/* Security notice */}
-      <div
-        className="flex items-start gap-3 rounded-lg p-3.5"
-        style={{
-          background: "rgba(91,203,245,0.06)",
-          border: "1px solid rgba(91,203,245,0.25)",
-        }}
-      >
-        <span
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md"
-          style={{ background: "#5bcbf522", color: "#5bcbf5" }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
-          </svg>
-        </span>
-        <div className="text-[12px] leading-relaxed" style={{ color: "#cbd5e1" }}>
-          <span className="font-semibold text-slate-100">Credentials live in 1Password.</span>{" "}
-          This page indexes tools and access — passwords are never stored here.
-        </div>
-      </div>
-
       {/* Category filter + search */}
       <div className="flex flex-wrap items-center gap-2">
         <Chip active={cat === ALL_CATEGORIES} onClick={() => setCat(ALL_CATEGORIES)}>
@@ -537,7 +527,11 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
       {/* Drawer */}
       <Drawer open={!!openId} onClose={() => setOpenId(null)} width={480}>
         {openTool && (
-          <ToolDrawerContent tool={openTool} onClose={() => setOpenId(null)} />
+          <ToolDrawerContent
+            tool={openTool}
+            onClose={() => setOpenId(null)}
+            onDelete={(id) => { setTools((prev) => prev.filter((t) => t.id !== id)); setOpenId(null); }}
+          />
         )}
       </Drawer>
     </div>

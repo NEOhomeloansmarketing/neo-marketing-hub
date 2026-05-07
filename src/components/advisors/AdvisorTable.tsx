@@ -101,10 +101,12 @@ function AdvisorDrawerContent({
   advisor: initialAdvisor,
   onClose,
   onUpdate,
+  onDelete,
 }: {
   advisor: Advisor;
   onClose: () => void;
   onUpdate: (id: string, patch: Partial<Advisor>) => void;
+  onDelete: (id: string) => void;
 }) {
   const [advisor, setAdvisor] = useState(initialAdvisor);
   const [channels, setChannels] = useState<AdvisorChannel[]>(initialAdvisor.channels);
@@ -228,7 +230,24 @@ function AdvisorDrawerContent({
             </div>
           </div>
         </div>
-        <DrawerCloseButton onClose={onClose} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              if (!confirm(`Delete ${advisor.name}? This cannot be undone.`)) return;
+              await fetch(`/api/advisors/${advisor.id}`, { method: "DELETE" });
+              onDelete(advisor.id);
+              onClose();
+            }}
+            className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-red-500/10"
+            style={{ color: "#5d6566", border: "1px solid #1d4368" }}
+            title="Delete advisor"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+            </svg>
+          </button>
+          <DrawerCloseButton onClose={onClose} />
+        </div>
       </div>
 
       {/* Onboarding checklist — clickable */}
@@ -718,6 +737,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
             onUpdate={(id, patch) =>
               setAdvisors((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
             }
+            onDelete={(id) => { setAdvisors((prev) => prev.filter((a) => a.id !== id)); setOpenId(null); }}
           />
         )}
       </Drawer>
