@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+// JotForm validates the webhook URL with a GET request first
+export async function GET() {
+  return NextResponse.json({ ok: true });
+}
+
 // JotForm sends form submissions as multipart/form-data or x-www-form-urlencoded
 // Fields come through as q{N}_{fieldSlug}: value pairs
 
