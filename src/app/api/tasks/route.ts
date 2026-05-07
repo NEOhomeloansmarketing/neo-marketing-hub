@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export async function GET() {
   const user = await getApiUser();
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { title, description, ownerId, projectId, dueBucket, dueDate, priority, scope } = body;
+    const { title, description, ownerId, projectId, dueBucket, dueDate, priority, scope, teamId: bodyTeamId } = body;
 
     if (!title) return NextResponse.json({ error: "title is required" }, { status: 400 });
 
@@ -38,11 +39,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Could not resolve owner — user not found in DB" }, { status: 400 });
     }
 
+    const activeTeamId = bodyTeamId ?? (await getActiveTeamId());
+
     const task = await db.task.create({
       data: {
         title,
         description,
         ownerId: resolvedOwnerId,
+        teamId: activeTeamId ?? null,
         projectId,
         dueBucket: dueBucket ?? "later",
         dueDate: dueDate ? new Date(dueDate) : null,

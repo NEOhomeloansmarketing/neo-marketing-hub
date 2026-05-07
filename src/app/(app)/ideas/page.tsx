@@ -3,6 +3,7 @@ import { IdeasView } from "@/components/ideas/IdeasView";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { createClient } from "@/lib/supabase-server";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export default async function IdeasPage() {
   await requireAuth();
@@ -19,8 +20,12 @@ export default async function IdeasPage() {
     }
     currentUserId = dbUser?.id ?? "";
 
+    const activeTeamId = await getActiveTeamId();
     const rawIdeas = await db.idea.findMany({
-      where: { status: { not: "ARCHIVED" } },
+      where: {
+        status: { not: "ARCHIVED" },
+        ...(activeTeamId ? { teamId: activeTeamId } : {}),
+      },
       include: {
         author: true,
         votes: true,

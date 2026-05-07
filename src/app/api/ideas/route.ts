@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export async function GET() {
   const user = await getApiUser();
@@ -32,6 +33,8 @@ export async function POST(request: Request) {
     const dbUser = await getOrCreateDbUser(user);
     if (!dbUser) return NextResponse.json({ error: "Could not resolve user" }, { status: 400 });
 
+    const activeTeamId = await getActiveTeamId();
+
     const idea = await db.idea.create({
       data: {
         title,
@@ -39,6 +42,7 @@ export async function POST(request: Request) {
         tags: tags ?? [],
         status: "PARKED",
         authorId: dbUser.id,
+        teamId: activeTeamId ?? null,
         votes: { create: { userId: dbUser.id } },
       },
       include: { author: true, votes: true },

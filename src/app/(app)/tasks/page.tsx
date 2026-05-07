@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { createClient } from "@/lib/supabase-server";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export default async function TasksPage() {
   await requireAuth();
@@ -17,7 +18,9 @@ export default async function TasksPage() {
     const dbUser = await getOrCreateDbUser(user);
     currentUserId = dbUser?.id ?? "";
 
+    const activeTeamId = await getActiveTeamId();
     const rawTasks = await db.task.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: { owner: true, followers: { include: { user: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -45,7 +48,10 @@ export default async function TasksPage() {
     }));
 
     const users = await db.user.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(activeTeamId ? { teams: { some: { teamId: activeTeamId } } } : {}),
+      },
       select: { id: true, name: true, color: true, initials: true, role: true },
       orderBy: { name: "asc" },
     });

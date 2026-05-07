@@ -3,6 +3,7 @@ import { MeetingsList } from "@/components/meetings/MeetingsList";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { createClient } from "@/lib/supabase-server";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export default async function MeetingsPage() {
   await requireAuth();
@@ -14,7 +15,9 @@ export default async function MeetingsPage() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
+    const activeTeamId = await getActiveTeamId();
     const rawMeetings = await db.meeting.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: {
         attendees: {
           include: { user: true },

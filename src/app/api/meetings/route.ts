@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export async function GET() {
   const user = await getApiUser();
@@ -33,6 +34,8 @@ export async function POST(request: Request) {
     const dbUser = await getOrCreateDbUser(user);
     if (!dbUser) return NextResponse.json({ error: "Could not resolve user" }, { status: 400 });
 
+    const activeTeamId = await getActiveTeamId();
+
     const meeting = await db.meeting.create({
       data: {
         title,
@@ -41,6 +44,7 @@ export async function POST(request: Request) {
         recurrence: recurrence ?? "ONE_OFF",
         status: "UPCOMING",
         createdById: dbUser.id,
+        teamId: activeTeamId ?? null,
         attendees: attendeeIds?.length
           ? { create: (attendeeIds as string[]).map((userId: string) => ({ userId })) }
           : undefined,
