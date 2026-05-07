@@ -134,6 +134,7 @@ const NAV_SECTIONS: NavSection[] = [
       { id: "teams", label: "Teams", href: "/teams", icon: IconTeams },
       { id: "members", label: "Members", href: "/members", icon: IconMembers },
       { id: "settings", label: "Settings", href: "/settings", icon: IconSettings },
+      { id: "admin", label: "Admin", href: "/admin", icon: IconSettings },
     ],
   },
 ];
@@ -146,13 +147,31 @@ interface SidebarProps {
     color: string;
     initials: string;
   } | null;
+  teams?: { id: string; name: string; color: string; slug: string }[];
+  activeTeamId?: string | null;
+  isAdmin?: boolean;
 }
 
-export function Sidebar({ user }: SidebarProps) {
+export function Sidebar({ user, teams = [], activeTeamId, isAdmin = false }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [teamMenuOpen, setTeamMenuOpen] = useState(false);
+  const [currentTeamId, setCurrentTeamId] = useState(activeTeamId ?? null);
+
+  const activeTeam = teams.find((t) => t.id === currentTeamId) ?? null;
+
+  const switchTeam = async (teamId: string | null) => {
+    setCurrentTeamId(teamId);
+    setTeamMenuOpen(false);
+    await fetch("/api/me/active-team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamId }),
+    });
+    router.refresh();
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -212,26 +231,58 @@ export function Sidebar({ user }: SidebarProps) {
       </div>
 
       {/* Workspace switcher */}
-      <button
-        className="mx-3 mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-white/[0.03] shrink-0"
-        style={{ border: "1px solid #1d4368", background: "#0a2540" }}
-      >
-        <div
-          className="grid h-6 w-6 shrink-0 place-items-center rounded text-[10px] font-bold text-slate-100"
-          style={{ background: "#14375a" }}
+      <div className="relative mx-3 mt-3 shrink-0">
+        <button
+          onClick={() => setTeamMenuOpen((v) => !v)}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-white/[0.03]"
+          style={{ border: "1px solid #1d4368", background: "#0a2540" }}
         >
-          NH
-        </div>
-        <div className="flex-1 leading-tight">
-          <div className="text-[12px] font-semibold text-slate-100">
-            Neo Workspace
+          <div
+            className="grid h-6 w-6 shrink-0 place-items-center rounded text-[10px] font-bold text-slate-100"
+            style={{ background: activeTeam ? activeTeam.color + "33" : "#14375a", border: `1px solid ${activeTeam ? activeTeam.color + "55" : "#1d4368"}` }}
+          >
+            <span style={{ color: activeTeam?.color ?? "#a8aaab" }}>
+              {activeTeam ? activeTeam.name.slice(0, 2).toUpperCase() : "NH"}
+            </span>
           </div>
-          <div className="text-[10px]" style={{ color: "#858889" }}>
-            NEO Home Loans
+          <div className="flex-1 leading-tight min-w-0">
+            <div className="truncate text-[12px] font-semibold text-slate-100">
+              {activeTeam ? activeTeam.name : "All workspaces"}
+            </div>
+            <div className="text-[10px]" style={{ color: "#858889" }}>
+              {teams.length > 0 ? `${teams.length} workspace${teams.length > 1 ? "s" : ""}` : "NEO Home Loans"}
+            </div>
           </div>
-        </div>
-        <IconChevronDown size={14} />
-      </button>
+          <IconChevronDown size={14} />
+        </button>
+
+        {teamMenuOpen && (
+          <div
+            className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md p-1"
+            style={{ background: "#0a2540", border: "1px solid #1d4368", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}
+          >
+            <button
+              onClick={() => switchTeam(null)}
+              className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-[12px] transition hover:bg-white/[0.04]"
+              style={{ color: !currentTeamId ? "#5bcbf5" : "#a8aaab", fontWeight: !currentTeamId ? 600 : 400 }}
+            >
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded text-[9px] font-bold" style={{ background: "#14375a", color: "#a8aaab" }}>∞</span>
+              All workspaces
+            </button>
+            {teams.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => switchTeam(t.id)}
+                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-[12px] transition hover:bg-white/[0.04]"
+                style={{ color: currentTeamId === t.id ? "#5bcbf5" : "#a8aaab", fontWeight: currentTeamId === t.id ? 600 : 400 }}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: t.color }} />
+                {t.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Nav */}
       <nav className="mt-4 flex-1 overflow-y-auto px-2 pb-4">
@@ -245,6 +296,7 @@ export function Sidebar({ user }: SidebarProps) {
             </div>
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => {
+                if (item.id === "admin" && !isAdmin) return null;
                 const active = isActive(item);
                 const Icon = item.icon;
                 return (

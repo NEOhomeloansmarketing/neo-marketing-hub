@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { db } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export default async function AppLayout({
   children,
@@ -15,13 +17,26 @@ export default async function AppLayout({
 
   if (!user) redirect("/sign-in");
 
-  // Try to get user profile from DB; fall back to Supabase metadata
   let profile = null;
+  let teams: { id: string; name: string; color: string; slug: string }[] = [];
+  let isAdmin = false;
+
   try {
-    profile = await db.user.findUnique({ where: { email: user.email! } });
+    const dbUser = await getOrCreateDbUser(user as Parameters<typeof getOrCreateDbUser>[0]);
+    if (dbUser) {
+      profile = dbUser;
+      isAdmin = dbUser.isAdmin;
+      const memberships = await db.teamMember.findMany({
+        where: { userId: dbUser.id },
+        include: { team: { select: { id: true, name: true, color: true, slug: true } } },
+      });
+      teams = memberships.map((m) => m.team);
+    }
   } catch {
-    // DB not yet connected — fall back gracefully
+    // DB not yet connected
   }
+
+  const activeTeamId = await getActiveTeamId();
 
   const meta = user.user_metadata;
   const displayUser = profile
@@ -47,11 +62,8 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen" style={{ background: "#061320" }}>
-      <Sidebar user={displayUser} />
-      <div
-        className="flex min-h-screen flex-col"
-        style={{ marginLeft: 220 }}
-      >
+      <Sidebar user={displayUser} teams={teams} activeTeamId={activeTeamId} isAdmin={isAdmin} />
+      <div className="flex min-h-screen flex-col" style={{ marginLeft: 220 }}>
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>
