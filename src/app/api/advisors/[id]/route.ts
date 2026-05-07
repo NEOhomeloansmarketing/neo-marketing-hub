@@ -20,13 +20,34 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   try {
     await requireAuth();
     const body = await request.json();
+    const ALLOWED = [
+      "name", "nmlsNumber", "brand", "leader", "email", "phone",
+      "streetAddress", "city", "state", "zip", "region", "status",
+      "nextAuditDue", "photoUrl", "napFormUrl", "napNotes",
+      "auditFormUrl", "matrixUrl", "canvaUrl", "socialToolUrl",
+    ];
+    const data: Record<string, unknown> = {};
+    for (const key of ALLOWED) {
+      if (key in body) data[key] = body[key];
+    }
+    // licenseStates comes as a comma-separated string from the client
+    if ("licenseStates" in body) {
+      const raw = body.licenseStates as string;
+      data.licenseStates = typeof raw === "string"
+        ? raw.split(",").map((s: string) => s.trim()).filter(Boolean)
+        : Array.isArray(raw) ? raw : [];
+    }
+    if ("nextAuditDue" in body && body.nextAuditDue) {
+      data.nextAuditDue = new Date(body.nextAuditDue);
+    }
     const advisor = await db.advisor.update({
       where: { id: params.id },
-      data: body,
+      data,
       include: { channels: true },
     });
     return NextResponse.json(advisor);
-  } catch {
+  } catch (e) {
+    console.error("Advisor PATCH error:", e);
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 }

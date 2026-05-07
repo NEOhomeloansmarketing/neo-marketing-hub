@@ -142,6 +142,49 @@ enum IdeaStatus {
   ARCHIVED
 }
 
+enum MarketingRequestStatus {
+  NEW
+  IN_REVIEW
+  IN_PRODUCTION
+  READY_FOR_REVIEW
+  DELIVERED
+  ARCHIVED
+}
+
+enum MarketingRequestType {
+  SOCIAL_POST
+  FLYER
+  EMAIL
+  VIDEO
+  GRAPHIC
+  HEADSHOT
+  BIO
+  OTHER
+}
+
+model MarketingRequest {
+  id              String                 @id @default(cuid())
+  title           String
+  description     String?
+  requestType     MarketingRequestType   @default(OTHER)
+  status          MarketingRequestStatus @default(NEW)
+  priority        TaskPriority           @default(MEDIUM)
+  advisorName     String?
+  advisorEmail    String?
+  advisorNmls     String?
+  assigneeId      String?
+  dueDate         DateTime?
+  submissionId    String?                @unique
+  formData        Json?
+  attachmentUrls  String[]
+  notes           String?
+  jotformFormId   String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  assignee User? @relation(fields: [assigneeId], references: [id])
+}
+
 model Team {
   id          String   @id @default(cuid())
   name        String
@@ -193,10 +236,11 @@ model User {
   toolsOwned         Tool[]
   toolAccess         ToolAccess[]
   toolActivities     ToolActivity[]
-  advisorAudits      AdvisorAudit[]
-  advisorIssues      AdvisorIssue[]
-  ideasCreated       Idea[]
-  ideaVotes          IdeaVote[]
+  advisorAudits        AdvisorAudit[]
+  advisorIssues        AdvisorIssue[]
+  ideasCreated         Idea[]
+  ideaVotes            IdeaVote[]
+  marketingAssignments MarketingRequest[]
 }
 
 model Meeting {
@@ -414,12 +458,16 @@ model Advisor {
   color         String        @default("#5bcbf5")
   brand         String?
   leader        String?
+  streetAddress String?
   city          String?
   state         String?
+  zip           String?
   auditFormUrl  String?
   matrixUrl     String?
   canvaUrl      String?
   socialToolUrl String?
+  napFormUrl    String?
+  napNotes      String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
