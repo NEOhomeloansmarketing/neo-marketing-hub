@@ -97,31 +97,131 @@ function CheckCell({ checked, label }: { checked: boolean; label?: string }) {
   );
 }
 
-function AdvisorDrawerContent({ advisor, onClose }: { advisor: Advisor; onClose: () => void }) {
+function AdvisorDrawerContent({
+  advisor: initialAdvisor,
+  onClose,
+  onUpdate,
+}: {
+  advisor: Advisor;
+  onClose: () => void;
+  onUpdate: (id: string, patch: Partial<Advisor>) => void;
+}) {
+  const [advisor, setAdvisor] = useState(initialAdvisor);
+  const [channels, setChannels] = useState<AdvisorChannel[]>(initialAdvisor.channels);
+  // Map of platform -> current input value for editing
+  const [channelInputs, setChannelInputs] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const ch of initialAdvisor.channels) m[ch.platform] = ch.url;
+    return m;
+  });
+  const [savingChannel, setSavingChannel] = useState<string | null>(null);
+  // Extra custom links
+  const [customLinks, setCustomLinks] = useState<AdvisorChannel[]>(
+    initialAdvisor.channels.filter((c) => !CHANNEL_DEFS.find((d) => d.key === c.platform))
+  );
+  const [addingCustom, setAddingCustom] = useState(false);
+  const [customLabel, setCustomLabel] = useState("");
+  const [customUrl, setCustomUrl] = useState("");
+
+  const toggleChecklist = async (field: "auditFormUrl" | "matrixUrl" | "canvaUrl" | "socialToolUrl") => {
+    const current = advisor[field];
+    const newVal = current ? null : "DONE";
+    setAdvisor((a) => ({ ...a, [field]: newVal }));
+    onUpdate(advisor.id, { [field]: newVal });
+    await fetch(`/api/advisors/${advisor.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newVal }),
+    });
+  };
+
+  const saveChannel = async (platform: string) => {
+    const url = channelInputs[platform] ?? "";
+    setSavingChannel(platform);
+    const res = await fetch(`/api/advisors/${advisor.id}/channels`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform, url }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.deleted) {
+        setChannels((prev) => prev.filter((c) => c.platform !== platform));
+        setChannelInputs((m) => { const n = { ...m }; delete n[platform]; return n; });
+        onUpdate(advisor.id, { channels: channels.filter((c) => c.platform !== platform) });
+      } else {
+        const exists = channels.find((c) => c.platform === platform);
+        const next = exists
+          ? channels.map((c) => (c.platform === platform ? data : c))
+          : [...channels, data];
+        setChannels(next);
+        setChannelInputs((m) => ({ ...m, [platform]: data.url }));
+        onUpdate(advisor.id, { channels: next });
+      }
+    }
+    setSavingChannel(null);
+  };
+
+  const addCustomLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customUrl.trim()) return;
+    const res = await fetch(`/api/advisors/${advisor.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "OTHER", url: customUrl.trim(), label: customLabel.trim() || undefined }),
+    });
+    if (res.ok) {
+      const ch = await res.json();
+      setCustomLinks((prev) => [...prev, ch]);
+      setChannels((prev) => [...prev, ch]);
+      setCustomLabel("");
+      setCustomUrl("");
+      setAddingCustom(false);
+      onUpdate(advisor.id, { channels: [...channels, ch] });
+    }
+  };
+
+  const deleteCustomLink = async (chId: string) => {
+    await fetch(`/api/advisors/${advisor.id}/channels/${chId}`, { method: "DELETE" });
+    setCustomLinks((prev) => prev.filter((c) => c.id !== chId));
+    setChannels((prev) => prev.filter((c) => c.id !== chId));
+    onUpdate(advisor.id, { channels: channels.filter((c) => c.id !== chId) });
+  };
+
+  const CHECKLIST = [
+    { label: "Audit Form", field: "auditFormUrl" as const },
+    { label: "Matrix", field: "matrixUrl" as const },
+    { label: "Canva", field: "canvaUrl" as const },
+    { label: "Social Tool", field: "socialToolUrl" as const },
+  ];
+
+  const drawerInputStyle: React.CSSProperties = {
+    background: "#061320",
+    border: "1px solid #1d4368",
+    borderRadius: 6,
+    color: "#e2e8f0",
+    fontSize: 12,
+    padding: "5px 9px",
+    outline: "none",
+    width: "100%",
+  };
+
   return (
     <>
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
           <Avatar name={advisor.name} color={advisor.color} initials={advisor.initials} size={48} />
           <div>
-            <div className="text-[18px] font-semibold tracking-tight text-slate-100">
-              {advisor.name}
-            </div>
+            <div className="text-[18px] font-semibold tracking-tight text-slate-100">{advisor.name}</div>
             <div className="mt-0.5 text-[12px]" style={{ color: "#a8aaab" }}>
               {advisor.brand} · {advisor.city}, {advisor.state}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <span
-                className="rounded-full px-2 py-[3px] text-[10.5px] font-medium font-mono"
-                style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}
-              >
+              <span className="rounded-full px-2 py-[3px] text-[10.5px] font-medium font-mono" style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>
                 NMLS {advisor.nmlsNumber}
               </span>
               {advisor.leader && (
-                <span
-                  className="rounded-full px-2 py-[3px] text-[10.5px] font-medium"
-                  style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}
-                >
+                <span className="rounded-full px-2 py-[3px] text-[10.5px] font-medium" style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}>
                   Lead: {advisor.leader}
                 </span>
               )}
@@ -131,127 +231,133 @@ function AdvisorDrawerContent({ advisor, onClose }: { advisor: Advisor; onClose:
         <DrawerCloseButton onClose={onClose} />
       </div>
 
-      {/* Onboarding checklist */}
-      <div
-        className="mt-5 rounded-lg p-4"
-        style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
-      >
-        <div
-          className="mb-3 text-[11px] font-semibold uppercase"
-          style={{ color: "#858889", letterSpacing: "0.12em" }}
-        >
+      {/* Onboarding checklist — clickable */}
+      <div className="mt-5 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+        <div className="mb-3 text-[11px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.12em" }}>
           Onboarding checklist
         </div>
         <div className="grid grid-cols-2 gap-2">
-          {[
-            { label: "Audit Form", checked: !!advisor.auditFormUrl },
-            { label: "Matrix", checked: !!advisor.matrixUrl },
-            { label: "Canva", checked: !!advisor.canvaUrl },
-            { label: "Social Tool", checked: !!advisor.socialToolUrl },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center gap-3 rounded-lg p-3"
-              style={{
-                background: "#0e2b48",
-                border: `1px solid ${item.checked ? "#22c55e44" : "#1d4368"}`,
-              }}
-            >
-              <span
-                className="grid h-8 w-8 place-items-center rounded-md"
-                style={{
-                  background: item.checked ? "#22c55e1f" : "#14375a",
-                  color: item.checked ? "#86efac" : "#5d6566",
-                  border: `1px solid ${item.checked ? "#22c55e44" : "#1d4368"}`,
-                }}
-              >
-                {item.checked ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                ) : (
-                  <span className="text-[10px]">—</span>
-                )}
-              </span>
-              <div>
-                <div className="text-[12.5px] font-semibold text-slate-100">{item.label}</div>
-                <div className="text-[10.5px]" style={{ color: item.checked ? "#86efac" : "#858889" }}>
-                  {item.checked ? "Has access" : "Not set up"}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Social channels */}
-      <div
-        className="mt-5 rounded-lg p-4"
-        style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
-      >
-        <div
-          className="mb-3 text-[11px] font-semibold uppercase"
-          style={{ color: "#858889", letterSpacing: "0.12em" }}
-        >
-          Social channels
-        </div>
-        <div className="space-y-1.5">
-          {CHANNEL_DEFS.map((def) => {
-            const ch = advisor.channels.find((c) => c.platform === def.key);
+          {CHECKLIST.map(({ label, field }) => {
+            const checked = !!advisor[field];
             return (
-              <div
-                key={def.key}
-                className="flex items-center gap-3 rounded-md px-2.5 py-2"
-                style={{ background: "#0a2540", border: "1px solid #1d4368" }}
+              <button
+                key={field}
+                onClick={() => toggleChecklist(field)}
+                className="flex items-center gap-3 rounded-lg p-3 text-left transition hover:brightness-110"
+                style={{ background: "#0a2540", border: `1px solid ${checked ? "#22c55e44" : "#1d4368"}` }}
               >
                 <span
-                  className="grid place-items-center rounded font-bold shrink-0"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md transition"
                   style={{
-                    width: 26, height: 26, fontSize: 11,
-                    background: ch ? def.color + "22" : "#14375a",
-                    color: ch ? def.color : "#5d6566",
-                    border: `1px solid ${ch ? def.color + "44" : "#1d4368"}`,
+                    background: checked ? "#22c55e1f" : "#14375a",
+                    color: checked ? "#86efac" : "#5d6566",
+                    border: `1px solid ${checked ? "#22c55e44" : "#1d4368"}`,
                   }}
                 >
-                  {def.label}
-                </span>
-                <span className="w-32 shrink-0 text-[12px] font-medium text-slate-200">
-                  {def.full}
-                </span>
-                {ch ? (
-                  <a
-                    href={ch.url}
-                    target="_blank"
-                    rel="noopener"
-                    className="flex flex-1 min-w-0 items-center gap-1.5 truncate text-[12px] hover:underline"
-                    style={{ color: "#5bcbf5" }}
-                  >
-                    <span className="truncate">{ch.label ?? ch.url}</span>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+                  {checked ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
                     </svg>
-                  </a>
-                ) : (
-                  <span className="flex-1 text-[12px]" style={{ color: "#5d6566" }}>
-                    — not set —
-                  </span>
-                )}
-              </div>
+                  ) : (
+                    <span className="text-[10px]">—</span>
+                  )}
+                </span>
+                <div>
+                  <div className="text-[12.5px] font-semibold text-slate-100">{label}</div>
+                  <div className="text-[10.5px]" style={{ color: checked ? "#86efac" : "#858889" }}>
+                    {checked ? "Complete" : "Not set up"}
+                  </div>
+                </div>
+              </button>
             );
           })}
         </div>
       </div>
 
-      <div
-        className="mt-5 rounded-md p-3 text-[11.5px] leading-relaxed"
-        style={{
-          background: "rgba(91,203,245,0.06)",
-          border: "1px solid rgba(91,203,245,0.25)",
-          color: "#cbd5e1",
-        }}
-      >
-        <span className="font-semibold text-slate-100">Tip:</span> Use the Audit Form column to
-        attach the most recent compliance review for this advisor.
+      {/* Social channels — editable */}
+      <div className="mt-5 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+        <div className="mb-3 text-[11px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.12em" }}>
+          Social channels
+        </div>
+        <div className="space-y-1.5">
+          {CHANNEL_DEFS.map((def) => {
+            const ch = channels.find((c) => c.platform === def.key);
+            const inputVal = channelInputs[def.key] ?? "";
+            const saving = savingChannel === def.key;
+            return (
+              <div key={def.key} className="flex items-center gap-2 rounded-md px-2.5 py-2" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+                <span
+                  className="grid shrink-0 place-items-center rounded font-bold"
+                  style={{ width: 26, height: 26, fontSize: 11, background: ch ? def.color + "22" : "#14375a", color: ch ? def.color : "#5d6566", border: `1px solid ${ch ? def.color + "44" : "#1d4368"}` }}
+                >
+                  {def.label}
+                </span>
+                <span className="w-28 shrink-0 text-[11.5px] font-medium text-slate-200">{def.full}</span>
+                <input
+                  value={inputVal}
+                  onChange={(e) => setChannelInputs((m) => ({ ...m, [def.key]: e.target.value }))}
+                  onBlur={() => saveChannel(def.key)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+                  placeholder="Paste URL…"
+                  style={drawerInputStyle}
+                />
+                {ch && (
+                  <a href={ch.url} target="_blank" rel="noopener" className="shrink-0 transition hover:opacity-80" style={{ color: "#5bcbf5" }} title="Open link">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
+                )}
+                {saving && <span className="shrink-0 text-[10px]" style={{ color: "#5d6566" }}>…</span>}
+              </div>
+            );
+          })}
+
+          {/* Custom / other links */}
+          {customLinks.map((ch) => (
+            <div key={ch.id} className="group flex items-center gap-2 rounded-md px-2.5 py-2" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+              <span className="grid shrink-0 place-items-center rounded font-bold text-[9px]" style={{ width: 26, height: 26, background: "#14375a", color: "#a8aaab", border: "1px solid #1d4368" }}>
+                ↗
+              </span>
+              <span className="flex-1 truncate text-[12px]" style={{ color: "#cbd5e1" }}>
+                {ch.label ?? ch.url}
+              </span>
+              <a href={ch.url} target="_blank" rel="noopener" className="shrink-0" style={{ color: "#5bcbf5" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+              </a>
+              <button onClick={() => deleteCustomLink(ch.id)} className="shrink-0 opacity-0 transition group-hover:opacity-100" style={{ color: "#5d6566" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+
+          {/* Add custom link */}
+          {addingCustom ? (
+            <form onSubmit={addCustomLink} className="space-y-2 rounded-md p-2.5" style={{ background: "#061320", border: "1px solid #1d4368" }}>
+              <input autoFocus value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="Label (e.g. Mortgage website)" style={drawerInputStyle} />
+              <input value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} placeholder="https://..." style={drawerInputStyle} />
+              <div className="flex gap-2">
+                <button type="submit" disabled={!customUrl.trim()} className="flex-1 rounded py-1 text-[11px] font-bold transition hover:brightness-110 disabled:opacity-50" style={{ background: "#5bcbf5", color: "#061320" }}>Add link</button>
+                <button type="button" onClick={() => setAddingCustom(false)} className="rounded px-2 py-1 text-[11px]" style={{ background: "#14375a", color: "#a8aaab" }}>Cancel</button>
+              </div>
+            </form>
+          ) : (
+            <button
+              onClick={() => setAddingCustom(true)}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-[11.5px] font-medium transition hover:brightness-110"
+              style={{ color: "#5bcbf5", background: "rgba(91,203,245,0.06)", border: "1px dashed rgba(91,203,245,0.3)" }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add another link
+            </button>
+          )}
+        </div>
       </div>
     </>
   );
@@ -606,7 +712,13 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
       {/* Detail drawer */}
       <Drawer open={!!openId} onClose={() => setOpenId(null)} width={640}>
         {openAdvisor && (
-          <AdvisorDrawerContent advisor={openAdvisor} onClose={() => setOpenId(null)} />
+          <AdvisorDrawerContent
+            advisor={openAdvisor}
+            onClose={() => setOpenId(null)}
+            onUpdate={(id, patch) =>
+              setAdvisors((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+            }
+          />
         )}
       </Drawer>
     </div>
