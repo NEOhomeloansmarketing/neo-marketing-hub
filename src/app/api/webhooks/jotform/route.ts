@@ -114,6 +114,20 @@ export async function POST(request: Request) {
 
     const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
 
+    // Collect any file upload URLs JotForm includes in the submission
+    const attachmentUrls: string[] = [];
+    for (const v of Object.values(fields)) {
+      if (typeof v === "string" && v.startsWith("http") && /\.(pdf|jpg|jpeg|png|gif|doc|docx|mp4|mov|zip)/i.test(v)) {
+        attachmentUrls.push(v);
+      }
+      // JotForm sometimes sends file arrays
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          if (typeof item === "string" && item.startsWith("http")) attachmentUrls.push(item);
+        }
+      }
+    }
+
     await db.marketingRequest.create({
       data: {
         title,
@@ -128,6 +142,7 @@ export async function POST(request: Request) {
         submissionId: submissionId ?? null,
         jotformFormId: topLevel.formID ?? null,
         formData: fields as any,
+        attachmentUrls,
       },
     });
 
