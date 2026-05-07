@@ -6,20 +6,6 @@ export async function GET() {
   return NextResponse.json({ ok: true });
 }
 
-// JotForm sends form submissions as multipart/form-data or x-www-form-urlencoded
-// Fields come through as q{N}_{fieldSlug}: value pairs
-
-function extractField(data: Record<string, string>, ...keys: string[]): string | null {
-  for (const key of keys) {
-    const lower = key.toLowerCase();
-    for (const [k, v] of Object.entries(data)) {
-      const kl = k.toLowerCase();
-      if (kl.includes(lower) && v && v.trim()) return v.trim();
-    }
-  }
-  return null;
-}
-
 function toRequestType(raw: string | null): string {
   if (!raw) return "OTHER";
   const r = raw.toLowerCase();
@@ -30,29 +16,82 @@ function toRequestType(raw: string | null): string {
   if (r.includes("graphic") || r.includes("banner") || r.includes("ad")) return "GRAPHIC";
   if (r.includes("headshot") || r.includes("photo")) return "HEADSHOT";
   if (r.includes("bio") || r.includes("profile")) return "BIO";
+  if (r.includes("website")) return "GRAPHIC";
   return "OTHER";
+}
+
+// Search all fields in the rawRequest JSON for a value matching any of the keywords
+function findField(fields: Record<string, unknown>, ...keywords: string[]): string | null {
+  for (const keyword of keywords) {
+    const kl = keyword.toLowerCase();
+    for (const [k, v] of Object.entries(fields)) {
+      if (!k.toLowerCase().includes(kl)) continue;
+      if (typeof v === "string" && v.trim()) return v.trim();
+      // JotForm sends name/phone/date as objects
+      if (typeof v === "object" && v !== null) {
+        const obj = v as Record<string, string>;
+        // Name: {first, last}
+        if ("first" in obj || "last" in obj) {
+          const full = [obj.first, obj.last].filter(Boolean).join(" ").trim();
+          if (full) return full;
+        }
+        // Date: {year, month, day}
+        if ("year" in obj && "month" in obj && "day" in obj) {
+          const { year, month, day } = obj;
+          if (year && month && day) return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+        }
+        // Phone: {area, phone}
+        if ("area" in obj || "phone" in obj) {
+          const num = [(obj.area ?? ""), (obj.phone ?? "")].filter(Boolean).join("");
+          if (num) return num;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") ?? "";
-    let fields: Record<string, string> = {};
+    let topLevel: Record<string, string> = {};
+    let fields: Record<string, unknown> = {};
 
     if (contentType.includes("application/json")) {
       fields = await request.json();
+      topLevel = fields as Record<string, string>;
+    } else if (contentType.includes("multipart/form-data")) {
+      // Parse multipart — Next.js handles this natively
+      const fd = await request.formData();
+      for (const [k, v] of fd.entries()) {
+        if (typeof v === "string") topLevel[k] = v;
+      }
+      // rawRequest contains the full structured JSON from JotForm
+      const rawJson = topLevel.rawRequest;
+      if (rawJson) {
+        try { fields = JSON.parse(rawJson); } catch { fields = topLevel; }
+      } else {
+        fields = topLevel;
+      }
     } else {
-      // JotForm sends URL-encoded or form-data
+      // URL-encoded fallback
       const text = await request.text();
       for (const pair of text.split("&")) {
         const idx = pair.indexOf("=");
         if (idx === -1) continue;
         const k = decodeURIComponent(pair.slice(0, idx).replace(/\+/g, " "));
         const v = decodeURIComponent(pair.slice(idx + 1).replace(/\+/g, " "));
-        fields[k] = v;
+        topLevel[k] = v;
+      }
+      const rawJson = topLevel.rawRequest;
+      if (rawJson) {
+        try { fields = JSON.parse(rawJson); } catch { fields = topLevel; }
+      } else {
+        fields = topLevel;
       }
     }
 
-    const submissionId = fields.submissionID ?? fields.submission_id ?? null;
+    const submissionId = topLevel.submissionID ?? topLevel.submission_id ?? null;
 
     // Deduplicate
     if (submissionId) {
@@ -60,16 +99,19 @@ export async function POST(request: Request) {
       if (existing) return NextResponse.json({ ok: true, duplicate: true });
     }
 
-    // Extract common fields
-    const advisorName = extractField(fields, "name", "fullname", "advisor", "loanofficer", "loanOfficer");
-    const advisorEmail = extractField(fields, "email");
-    const advisorNmls = extractField(fields, "nmls", "nmlsid", "license");
-    const rawType = extractField(fields, "type", "requesttype", "requestType", "category", "service");
-    const description = extractField(fields, "description", "details", "message", "request", "notes", "instructions", "what");
-    const title = extractField(fields, "title", "subject", "headline") ??
+    const advisorName = findField(fields, "name", "fullname", "loanofficer", "advisor");
+    const advisorEmail = findField(fields, "email");
+    const advisorNmls = findField(fields, "nmls", "license");
+    const rawType = findField(fields, "whattype", "type", "project", "service", "category");
+    const description = findField(fields, "description", "canyou", "details", "notes", "message", "instructions");
+    const titleFromForm = findField(fields, "title", "whatis", "subject", "headline", "name of");
+    const dueDateRaw = findField(fields, "due", "deadline", "requested");
+
+    const title =
+      titleFromForm ??
       (rawType ? `${rawType} request` : "Marketing request") +
       (advisorName ? ` — ${advisorName}` : "");
-    const dueDateRaw = extractField(fields, "due", "deadline", "duedate", "by");
+
     const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
 
     await db.marketingRequest.create({
@@ -84,7 +126,7 @@ export async function POST(request: Request) {
         advisorNmls: advisorNmls ?? null,
         dueDate: dueDate && !isNaN(dueDate.getTime()) ? dueDate : null,
         submissionId: submissionId ?? null,
-        jotformFormId: fields.formID ?? null,
+        jotformFormId: topLevel.formID ?? null,
         formData: fields as any,
       },
     });
