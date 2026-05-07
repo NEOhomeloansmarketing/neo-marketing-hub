@@ -91,6 +91,7 @@ function NewTaskPanel({
   const [scope, setScope] = useState<"PERSONAL" | "TEAM">(defaultScope);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -125,6 +126,18 @@ function NewTaskPanel({
         return;
       }
       const task = await res.json();
+
+      // Upload any pending files immediately after task creation
+      if (pendingFiles.length > 0) {
+        await Promise.all(
+          pendingFiles.map((file) => {
+            const fd = new FormData();
+            fd.append("file", file);
+            return fetch(`/api/tasks/${task.id}/attachments`, { method: "POST", body: fd });
+          })
+        );
+      }
+
       const assignee = teamMembers.find((m) => m.id === task.ownerId);
       onCreated({
         id: task.id,
@@ -314,9 +327,46 @@ function NewTaskPanel({
             />
           </div>
 
-          {/* Supporting documents note */}
-          <div className="rounded-lg px-4 py-3 text-[12px] leading-relaxed" style={{ background: "#0e2b48", border: "1px dashed #1d4368", color: "#858889" }}>
-            <span className="font-semibold" style={{ color: "#5bcbf5" }}>Tip:</span> Save the task first, then open it to attach files and images.
+          {/* Attachments */}
+          <div>
+            <SectionLabel>Attachments</SectionLabel>
+            <label
+              className="flex cursor-pointer items-center gap-3 rounded-lg px-4 py-3 transition hover:brightness-110"
+              style={{ background: "#0e2b48", border: "1px dashed #1d4368" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+              </svg>
+              <span className="text-[12.5px]" style={{ color: "#5bcbf5" }}>
+                {pendingFiles.length > 0 ? `${pendingFiles.length} file${pendingFiles.length > 1 ? "s" : ""} selected — click to add more` : "Attach files or images"}
+              </span>
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  setPendingFiles((prev) => [...prev, ...files]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {pendingFiles.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {pendingFiles.map((f, i) => (
+                  <li key={i} className="flex items-center justify-between rounded px-3 py-1.5 text-[11.5px]" style={{ background: "#0a2540", border: "1px solid #1d4368", color: "#a8aaab" }}>
+                    <span className="truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+                      className="ml-2 shrink-0 transition hover:text-red-400"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
@@ -345,7 +395,7 @@ function NewTaskPanel({
                 boxShadow: "0 4px 18px rgba(91,203,245,0.35)",
               }}
             >
-              {saving ? "Creating…" : "Create task"}
+              {saving ? (pendingFiles.length > 0 ? "Uploading…" : "Creating…") : "Create task"}
             </button>
           </div>
         </div>
