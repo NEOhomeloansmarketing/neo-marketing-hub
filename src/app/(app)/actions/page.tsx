@@ -1,15 +1,19 @@
 import { ActionsPageShell } from "@/components/actions/ActionsPageShell";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export default async function ActionItemsPage() {
   await requireAuth();
+
+  const activeTeamId = await getActiveTeamId();
 
   let items: React.ComponentProps<typeof ActionsPageShell>["items"] = [];
   let stats = { open: 0, dueThisWeek: 0, completed: 0, avgDays: 3 };
 
   try {
     const rawItems = await db.actionItem.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: {
         assignee: true,
         meeting: { select: { id: true, title: true } },

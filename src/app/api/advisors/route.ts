@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { db, AdvisorPlatform } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export async function GET() {
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const activeTeamId = await getActiveTeamId();
   try {
     const advisors = await db.advisor.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: { channels: true, issues: { where: { status: "OPEN" } } },
       orderBy: { name: "asc" },
     });
@@ -38,6 +41,8 @@ export async function POST(request: Request) {
     if (zillowUrl) channels.push({ platform: AdvisorPlatform.ZILLOW, url: zillowUrl });
     if (yelpUrl) channels.push({ platform: AdvisorPlatform.YELP, url: yelpUrl });
 
+    const teamId = await getActiveTeamId();
+
     const advisor = await db.advisor.create({
       data: {
         name,
@@ -53,6 +58,7 @@ export async function POST(request: Request) {
         matrixUrl: matrixUrl || null,
         canvaUrl: canvaUrl || null,
         socialToolUrl: socialToolUrl || null,
+        teamId: teamId ?? null,
         channels: channels.length > 0 ? { create: channels } : undefined,
       },
       include: { channels: true },

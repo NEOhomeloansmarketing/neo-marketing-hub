@@ -1,16 +1,20 @@
 import { ToolsPageShell } from "@/components/tools/ToolsPageShell";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export default async function ToolsPage() {
   const user = await getApiUser();
   if (!user) return null;
+
+  const activeTeamId = await getActiveTeamId();
 
   let tools: React.ComponentProps<typeof ToolsPageShell>["tools"] = [];
   let categories: string[] = [];
 
   try {
     const rawTools = await db.tool.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: { owner: true },
       orderBy: { name: "asc" },
     });

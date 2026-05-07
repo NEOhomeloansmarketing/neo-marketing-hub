@@ -183,10 +183,13 @@ model Team {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members  TeamMember[]
-  tasks    Task[]
-  meetings Meeting[]
-  ideas    Idea[]
+  members     TeamMember[]
+  tasks       Task[]
+  meetings    Meeting[]
+  ideas       Idea[]
+  actionItems ActionItem[]
+  advisors    Advisor[]
+  tools       Tool[]
 }
 
 model TeamMember {
@@ -292,6 +295,7 @@ model MeetingDecision {
 model ActionItem {
   id          String       @id @default(cuid())
   meetingId   String?
+  teamId      String?
   title       String
   description String?
   assigneeId  String?
@@ -306,6 +310,7 @@ model ActionItem {
   updatedAt   DateTime     @updatedAt
 
   meeting   Meeting? @relation(fields: [meetingId], references: [id])
+  team      Team?    @relation(fields: [teamId], references: [id])
   assignee  User?    @relation("ActionOwner", fields: [assigneeId], references: [id])
   createdBy User     @relation("ActionCreator", fields: [createdById], references: [id])
   task      Task?    @relation(fields: [taskId], references: [id])
@@ -378,6 +383,7 @@ model TaskAttachment {
 
 model Tool {
   id                 String       @id @default(cuid())
+  teamId             String?
   name               String
   url                String
   category           String
@@ -404,6 +410,7 @@ model Tool {
   updatedAt          DateTime     @updatedAt
 
   owner      User?          @relation(fields: [ownerUserId], references: [id])
+  team       Team?          @relation(fields: [teamId], references: [id])
   access     ToolAccess[]
   activities ToolActivity[]
 }
@@ -434,6 +441,7 @@ model ToolActivity {
 
 model Advisor {
   id            String        @id @default(cuid())
+  teamId        String?
   name          String
   nmlsNumber    String
   region        String?
@@ -463,6 +471,7 @@ model Advisor {
   channels AdvisorChannel[]
   audits   AdvisorAudit[]
   issues   AdvisorIssue[]
+  team     Team?           @relation(fields: [teamId], references: [id])
 }
 
 model AdvisorChannel {

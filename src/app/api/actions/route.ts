@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export async function GET() {
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const activeTeamId = await getActiveTeamId();
+
   try {
     const actions = await db.actionItem.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: { assignee: true, meeting: { select: { id: true, title: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -51,6 +55,8 @@ export async function POST(request: Request) {
       taskId = task.id;
     }
 
+    const teamId = await getActiveTeamId();
+
     const action = await db.actionItem.create({
       data: {
         title,
@@ -62,6 +68,7 @@ export async function POST(request: Request) {
         meetingId,
         source: meetingId ? "MEETING" : "MANUAL",
         taskId,
+        teamId: teamId ?? null,
       },
       include: { assignee: true },
     });

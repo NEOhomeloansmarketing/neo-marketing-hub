@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export async function GET() {
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const activeTeamId = await getActiveTeamId();
+
   try {
     const tools = await db.tool.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: { owner: true },
       orderBy: { name: "asc" },
     });
@@ -34,8 +38,10 @@ export async function POST(request: Request) {
       resolvedOwnerUserId = dbUser?.id;
     }
 
+    const teamId = await getActiveTeamId();
+
     const tool = await db.tool.create({
-      data: { name, url, category, credKind: credKind ?? "SHARED", seats, notesMd, vaultLink, ownerUserId: resolvedOwnerUserId, username, credPassword },
+      data: { name, url, category, credKind: credKind ?? "SHARED", seats, notesMd, vaultLink, ownerUserId: resolvedOwnerUserId, username, credPassword, teamId: teamId ?? null },
       include: { owner: true },
     });
     return NextResponse.json(tool, { status: 201 });

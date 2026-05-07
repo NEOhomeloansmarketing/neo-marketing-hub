@@ -577,6 +577,8 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Inline checklist toggle without opening drawer
   const toggleInlineChecklist = async (advisorId: string, field: ChecklistField, e: React.MouseEvent) => {
@@ -590,6 +592,27 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [field]: newVal }),
     });
+  };
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  const toggleSelectAll = (filteredIds: string[], e: React.MouseEvent) => {
+    e.stopPropagation();
+    const allSelected = filteredIds.every((id) => selected.has(id));
+    setSelected(allSelected ? new Set() : new Set(filteredIds));
+  };
+
+  const bulkDelete = async () => {
+    const names = advisors.filter((a) => selected.has(a.id)).map((a) => a.name);
+    if (!confirm(`Delete ${selected.size} advisor${selected.size !== 1 ? "s" : ""}?\n\n${names.join(", ")}\n\nThis cannot be undone.`)) return;
+    setBulkDeleting(true);
+    await Promise.all(Array.from(selected).map((id) => fetch(`/api/advisors/${id}`, { method: "DELETE" })));
+    setAdvisors((prev) => prev.filter((a) => !selected.has(a.id)));
+    setSelected(new Set());
+    setBulkDeleting(false);
   };
 
   // New advisor form state
@@ -819,83 +842,154 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
 
       {/* Directory table */}
       <div className="overflow-x-auto rounded-lg" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
-        <div style={{ minWidth: 960 }}>
+        <div style={{ minWidth: 980 }}>
+          {/* Header */}
           <div className="grid items-center gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase"
             style={{
-              gridTemplateColumns: "1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
+              gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
               borderBottom: "1px solid #1d4368", color: "#858889", background: "#0a2540", letterSpacing: "0.1em",
             }}>
+            <button
+              onClick={(e) => toggleSelectAll(filtered.map((a) => a.id), e)}
+              className="grid h-4 w-4 place-items-center rounded transition"
+              title="Select all"
+              style={{
+                background: filtered.length > 0 && filtered.every((a) => selected.has(a.id)) ? "#5bcbf5" : "#14375a",
+                border: "1px solid #1d4368",
+              }}
+            >
+              {filtered.length > 0 && filtered.every((a) => selected.has(a.id)) && (
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#061320" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+              {filtered.length > 0 && filtered.some((a) => selected.has(a.id)) && !filtered.every((a) => selected.has(a.id)) && (
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              )}
+            </button>
             <div>Name</div><div>Brand</div><div>NMLS #</div><div>Division Lead</div><div>Location</div>
             <div className="text-center">Audit</div><div className="text-center">Matrix</div>
             <div className="text-center">Canva</div><div className="text-center">Social Tool</div>
             <div>Channels</div><div />
           </div>
 
-          {filtered.map((a, i) => (
-            <div
-              key={a.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setOpenId(a.id)}
-              onKeyDown={(e) => { if (e.key === "Enter") setOpenId(a.id); }}
-              className="grid w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.02]"
-              style={{
-                gridTemplateColumns: "1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
-                borderBottom: i === filtered.length - 1 ? "none" : "1px solid #1d4368",
-              }}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Avatar name={a.name} color={a.color} initials={a.initials} size={28} />
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold text-slate-100">{a.name}</div>
-                  {a.email && <div className="truncate text-[10.5px]" style={{ color: "#5d6566" }}>{a.email}</div>}
+          {filtered.map((a, i) => {
+            const isSelected = selected.has(a.id);
+            return (
+              <div
+                key={a.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setOpenId(a.id)}
+                onKeyDown={(e) => { if (e.key === "Enter") setOpenId(a.id); }}
+                className="grid w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.02]"
+                style={{
+                  gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
+                  borderBottom: i === filtered.length - 1 ? "none" : "1px solid #1d4368",
+                  background: isSelected ? "rgba(91,203,245,0.04)" : undefined,
+                }}
+              >
+                {/* Checkbox */}
+                <button
+                  onClick={(e) => toggleSelect(a.id, e)}
+                  className="grid h-4 w-4 shrink-0 place-items-center rounded transition hover:scale-110"
+                  title={isSelected ? "Deselect" : "Select"}
+                  style={{
+                    background: isSelected ? "#5bcbf5" : "#14375a",
+                    border: `1px solid ${isSelected ? "#5bcbf5" : "#1d4368"}`,
+                  }}
+                >
+                  {isSelected && (
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#061320" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Avatar name={a.name} color={a.color} initials={a.initials} size={28} />
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-semibold text-slate-100">{a.name}</div>
+                    {a.email && <div className="truncate text-[10.5px]" style={{ color: "#5d6566" }}>{a.email}</div>}
+                  </div>
+                </div>
+                <div className="truncate text-[12px]" style={{ color: "#cbd5e1" }}>{a.brand ?? "—"}</div>
+                <div className="font-mono text-[11.5px] tabular-nums" style={{ color: "#a8aaab" }}>{a.nmlsNumber}</div>
+                <div className="truncate text-[12px]" style={{ color: "#cbd5e1" }}>{a.leader ?? "—"}</div>
+                <div className="truncate text-[11.5px]" style={{ color: "#a8aaab" }}>
+                  {a.city && a.state ? `${a.city}, ${a.state}` : (a.city ?? a.state ?? "—")}
+                </div>
+                {/* Inline-clickable checklist cells */}
+                {CHECKLIST.map(({ field, label }) => {
+                  const checked = !!a[field];
+                  return (
+                    <div key={field} className="flex justify-center">
+                      <button
+                        onClick={(e) => toggleInlineChecklist(a.id, field, e)}
+                        title={`${label}: ${checked ? "Complete — click to uncheck" : "Not set — click to mark complete"}`}
+                        className="grid h-5 w-5 place-items-center rounded transition hover:scale-110"
+                        style={{
+                          background: checked ? "#22c55e22" : "#0a2540",
+                          border: `1px solid ${checked ? "#22c55e44" : "#1d4368"}`,
+                          color: checked ? "#86efac" : "#5d6566",
+                        }}
+                      >
+                        {checked && (
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+                <div className="flex flex-wrap items-center gap-1">
+                  {CHANNEL_DEFS.map((def) => {
+                    const ch = a.channels.find((c) => c.platform === def.key);
+                    return <ChannelChip key={def.key} def={def} channel={ch} />;
+                  })}
+                </div>
+                <div style={{ color: "#858889" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
                 </div>
               </div>
-              <div className="truncate text-[12px]" style={{ color: "#cbd5e1" }}>{a.brand ?? "—"}</div>
-              <div className="font-mono text-[11.5px] tabular-nums" style={{ color: "#a8aaab" }}>{a.nmlsNumber}</div>
-              <div className="truncate text-[12px]" style={{ color: "#cbd5e1" }}>{a.leader ?? "—"}</div>
-              <div className="truncate text-[11.5px]" style={{ color: "#a8aaab" }}>
-                {a.city && a.state ? `${a.city}, ${a.state}` : (a.city ?? a.state ?? "—")}
-              </div>
-              {/* Inline-clickable checklist cells */}
-              {CHECKLIST.map(({ field, label }) => {
-                const checked = !!a[field];
-                return (
-                  <div key={field} className="flex justify-center">
-                    <button
-                      onClick={(e) => toggleInlineChecklist(a.id, field, e)}
-                      title={`${label}: ${checked ? "Complete — click to uncheck" : "Not set — click to mark complete"}`}
-                      className="grid h-5 w-5 place-items-center rounded transition hover:scale-110"
-                      style={{
-                        background: checked ? "#22c55e22" : "#0a2540",
-                        border: `1px solid ${checked ? "#22c55e44" : "#1d4368"}`,
-                        color: checked ? "#86efac" : "#5d6566",
-                      }}
-                    >
-                      {checked && (
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-              <div className="flex flex-wrap items-center gap-1">
-                {CHANNEL_DEFS.map((def) => {
-                  const ch = a.channels.find((c) => c.platform === def.key);
-                  return <ChannelChip key={def.key} def={def} channel={ch} />;
-                })}
-              </div>
-              <div style={{ color: "#858889" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
+          style={{ background: "#0e2b48", border: "1px solid #1d4368", minWidth: 320 }}
+        >
+          <span className="text-[13px] font-semibold text-slate-100">
+            {selected.size} advisor{selected.size !== 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-auto rounded-md px-3 py-1.5 text-[11.5px] font-medium transition hover:brightness-110"
+            style={{ background: "#14375a", color: "#a8aaab", border: "1px solid #1d4368" }}
+          >
+            Deselect
+          </button>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkDeleting}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+            style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+            </svg>
+            {bulkDeleting ? "Deleting…" : `Delete ${selected.size}`}
+          </button>
+        </div>
+      )}
 
       {/* Detail drawer */}
       <Drawer open={!!openId} onClose={() => setOpenId(null)} width={640}>

@@ -1,16 +1,20 @@
 import { AdvisorsPageShell } from "@/components/advisors/AdvisorsPageShell";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
+import { getActiveTeamId } from "@/lib/team-context";
 
 export default async function AdvisorsPage() {
   const user = await getApiUser();
   if (!user) return null;
+
+  const activeTeamId = await getActiveTeamId();
 
   let advisors: any[] = [];
   let leaders: string[] = [];
 
   try {
     const rawAdvisors = await db.advisor.findMany({
+      where: activeTeamId ? { teamId: activeTeamId } : undefined,
       include: {
         channels: true,
         issues: { where: { status: "OPEN" } },

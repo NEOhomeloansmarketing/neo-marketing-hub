@@ -2,6 +2,7 @@ import { TopBar } from "@/components/topbar/TopBar";
 import { StatCard } from "@/components/ui/StatCard";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
+import { getActiveTeamId } from "@/lib/team-context";
 import Link from "next/link";
 
 export default async function DashboardPage() {
@@ -44,15 +45,18 @@ export default async function DashboardPage() {
     assigneeName?: string;
   }[] = [];
 
+  const activeTeamId = await getActiveTeamId();
+  const teamFilter = activeTeamId ? { teamId: activeTeamId } : {};
+
   try {
     const now = new Date();
     const [tasks, actions, meetings, tools, advisors, ideas, openReqs, newReqs] = await Promise.all([
-      db.task.count({ where: { status: { not: "DONE" } } }),
-      db.actionItem.count({ where: { status: { not: "DONE" } } }),
-      db.meeting.count({ where: { scheduledAt: { gte: now }, status: "UPCOMING" } }),
-      db.tool.count(),
-      db.advisor.count({ where: { status: "ACTIVE" } }),
-      db.idea.count({ where: { status: { not: "ARCHIVED" } } }),
+      db.task.count({ where: { ...teamFilter, status: { not: "DONE" } } }),
+      db.actionItem.count({ where: { ...teamFilter, status: { not: "DONE" } } }),
+      db.meeting.count({ where: { ...teamFilter, scheduledAt: { gte: now }, status: "UPCOMING" } }),
+      db.tool.count({ where: teamFilter }),
+      db.advisor.count({ where: { ...teamFilter, status: "ACTIVE" } }),
+      db.idea.count({ where: { ...teamFilter, status: { not: "ARCHIVED" } } }),
       db.marketingRequest.count({ where: { status: { notIn: ["DELIVERED", "ARCHIVED"] } } }),
       db.marketingRequest.count({ where: { status: "NEW" } }),
     ]);
@@ -77,13 +81,14 @@ export default async function DashboardPage() {
 
     recentMeetings = await db.meeting.findMany({
       take: 5,
+      where: teamFilter,
       orderBy: { scheduledAt: "desc" },
       include: { actionItems: true },
     });
 
     const recentActionItems = await db.actionItem.findMany({
       take: 5,
-      where: { status: { not: "DONE" } },
+      where: { ...teamFilter, status: { not: "DONE" } },
       orderBy: { dueDate: "asc" },
       include: { assignee: true },
     });
