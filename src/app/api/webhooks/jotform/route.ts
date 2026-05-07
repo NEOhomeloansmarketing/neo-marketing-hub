@@ -6,19 +6,6 @@ export async function GET() {
   return NextResponse.json({ ok: true });
 }
 
-function toRequestType(raw: string | null): string {
-  if (!raw) return "OTHER";
-  const r = raw.toLowerCase();
-  if (r.includes("social")) return "SOCIAL_POST";
-  if (r.includes("flyer") || r.includes("print")) return "FLYER";
-  if (r.includes("email") || r.includes("newsletter")) return "EMAIL";
-  if (r.includes("video") || r.includes("reel")) return "VIDEO";
-  if (r.includes("graphic") || r.includes("banner") || r.includes("ad")) return "GRAPHIC";
-  if (r.includes("headshot") || r.includes("photo")) return "HEADSHOT";
-  if (r.includes("bio") || r.includes("profile")) return "BIO";
-  if (r.includes("website")) return "GRAPHIC";
-  return "OTHER";
-}
 
 // Search all fields in the rawRequest JSON for a value matching any of the keywords
 function findField(fields: Record<string, unknown>, ...keywords: string[]): string | null {
@@ -132,7 +119,7 @@ export async function POST(request: Request) {
       data: {
         title,
         description: description ?? null,
-        requestType: toRequestType(rawType) as any,
+        requestType: rawType ?? "Other",
         status: "NEW",
         priority: "MEDIUM",
         advisorName: advisorName ?? null,

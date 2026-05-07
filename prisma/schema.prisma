@@ -151,22 +151,11 @@ enum MarketingRequestStatus {
   ARCHIVED
 }
 
-enum MarketingRequestType {
-  SOCIAL_POST
-  FLYER
-  EMAIL
-  VIDEO
-  GRAPHIC
-  HEADSHOT
-  BIO
-  OTHER
-}
-
 model MarketingRequest {
   id              String                 @id @default(cuid())
   title           String
   description     String?
-  requestType     MarketingRequestType   @default(OTHER)
+  requestType     String                 @default("Other")
   status          MarketingRequestStatus @default(NEW)
   priority        TaskPriority           @default(MEDIUM)
   advisorName     String?

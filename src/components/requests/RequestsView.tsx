@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 
 type RequestStatus = "NEW" | "IN_REVIEW" | "IN_PRODUCTION" | "READY_FOR_REVIEW" | "DELIVERED" | "ARCHIVED";
-type RequestType = "SOCIAL_POST" | "FLYER" | "EMAIL" | "VIDEO" | "GRAPHIC" | "HEADSHOT" | "BIO" | "OTHER";
 type Priority = "LOW" | "MEDIUM" | "HIGH";
 
 interface Assignee {
@@ -18,7 +17,7 @@ interface MarketingRequest {
   id: string;
   title: string;
   description?: string | null;
-  requestType: RequestType;
+  requestType: string;
   status: RequestStatus;
   priority: Priority;
   advisorName?: string | null;
@@ -47,27 +46,13 @@ const COLUMNS: { id: RequestStatus; label: string; color: string; accent: string
   { id: "DELIVERED", label: "Delivered", color: "#22c55e", accent: "rgba(34,197,94,0.12)" },
 ];
 
-const TYPE_LABELS: Record<RequestType, string> = {
-  SOCIAL_POST: "Social Post",
-  FLYER: "Flyer",
-  EMAIL: "Email",
-  VIDEO: "Video",
-  GRAPHIC: "Graphic",
-  HEADSHOT: "Headshot",
-  BIO: "Bio",
-  OTHER: "Other",
-};
-
-const TYPE_COLOR: Record<RequestType, string> = {
-  SOCIAL_POST: "#5bcbf5",
-  FLYER: "#f59e0b",
-  EMAIL: "#6366f1",
-  VIDEO: "#f43f5e",
-  GRAPHIC: "#a855f7",
-  HEADSHOT: "#14b8a6",
-  BIO: "#fb923c",
-  OTHER: "#858889",
-};
+// Generate a stable color from any string
+const TYPE_COLORS = ["#5bcbf5", "#f59e0b", "#6366f1", "#f43f5e", "#a855f7", "#14b8a6", "#fb923c", "#22c55e", "#e879f9", "#60a5fa"];
+function typeColor(type: string): string {
+  let hash = 0;
+  for (let i = 0; i < type.length; i++) hash = type.charCodeAt(i) + ((hash << 5) - hash);
+  return TYPE_COLORS[Math.abs(hash) % TYPE_COLORS.length];
+}
 
 const PRIORITY_STYLE: Record<Priority, { color: string; bg: string; border: string }> = {
   HIGH:   { color: "#fca5a5", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.3)" },
@@ -75,7 +60,6 @@ const PRIORITY_STYLE: Record<Priority, { color: string; bg: string; border: stri
   LOW:    { color: "#94a3b8", bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.25)" },
 };
 
-const REQUEST_TYPES: RequestType[] = ["SOCIAL_POST", "FLYER", "EMAIL", "VIDEO", "GRAPHIC", "HEADSHOT", "BIO", "OTHER"];
 const PRIORITIES: Priority[] = ["HIGH", "MEDIUM", "LOW"];
 
 const inputStyle: React.CSSProperties = {
@@ -89,11 +73,12 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
 };
 
-function TypeChip({ type }: { type: RequestType }) {
+function TypeChip({ type }: { type: string }) {
+  const color = typeColor(type);
   return (
     <span className="inline-flex items-center rounded-full px-2 py-[2px] text-[10px] font-semibold"
-      style={{ background: TYPE_COLOR[type] + "22", color: TYPE_COLOR[type], border: `1px solid ${TYPE_COLOR[type]}44` }}>
-      {TYPE_LABELS[type]}
+      style={{ background: color + "22", color, border: `1px solid ${color}44` }}>
+      {type}
     </span>
   );
 }
@@ -162,7 +147,7 @@ function RequestDetailPanel({
   const [status, setStatus] = useState<RequestStatus>(req.status);
   const [title, setTitle] = useState(req.title);
   const [description, setDescription] = useState(req.description ?? "");
-  const [requestType, setRequestType] = useState<RequestType>(req.requestType);
+  const [requestType, setRequestType] = useState(req.requestType);
   const [priority, setPriority] = useState<Priority>(req.priority);
   const [assigneeId, setAssigneeId] = useState(req.assigneeId ?? "");
   const [dueDate, setDueDate] = useState(req.dueDate ? req.dueDate.slice(0, 10) : "");
@@ -290,9 +275,7 @@ function RequestDetailPanel({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <SL>Type</SL>
-              <select value={requestType} onChange={(e) => setRequestType(e.target.value as RequestType)} style={inputStyle}>
-                {REQUEST_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-              </select>
+              <input value={requestType} onChange={(e) => setRequestType(e.target.value)} placeholder="e.g. Social Post, Flyer, Video…" style={inputStyle} />
             </div>
             <div>
               <SL>Priority</SL>
@@ -418,7 +401,7 @@ function NewRequestPanel({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [requestType, setRequestType] = useState<RequestType>("OTHER");
+  const [requestType, setRequestType] = useState("");
   const [priority, setPriority] = useState<Priority>("MEDIUM");
   const [advisorName, setAdvisorName] = useState("");
   const [advisorEmail, setAdvisorEmail] = useState("");
@@ -477,9 +460,7 @@ function NewRequestPanel({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <SL>Type</SL>
-              <select value={requestType} onChange={(e) => setRequestType(e.target.value as RequestType)} style={inputStyle}>
-                {REQUEST_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-              </select>
+              <input value={requestType} onChange={(e) => setRequestType(e.target.value)} placeholder="e.g. Social Post, Flyer, Video…" style={inputStyle} />
             </div>
             <div>
               <SL>Priority</SL>
@@ -541,8 +522,10 @@ export function RequestsView({ requests: initialRequests, teamMembers }: Request
   const [requests, setRequests] = useState(initialRequests);
   const [openReq, setOpenReq] = useState<MarketingRequest | null>(null);
   const [composing, setComposing] = useState(false);
-  const [filterType, setFilterType] = useState<RequestType | "ALL">("ALL");
+  const [filterType, setFilterType] = useState("ALL");
   const [showArchived, setShowArchived] = useState(false);
+
+  const uniqueTypes = Array.from(new Set(requests.map((r) => r.requestType).filter(Boolean))).sort();
 
   const visible = requests.filter((r) => {
     if (!showArchived && r.status === "ARCHIVED") return false;
@@ -577,13 +560,16 @@ export function RequestsView({ requests: initialRequests, teamMembers }: Request
             style={{ background: filterType === "ALL" ? "rgba(91,203,245,0.15)" : "#0a2540", color: filterType === "ALL" ? "#5bcbf5" : "#858889", border: `1px solid ${filterType === "ALL" ? "rgba(91,203,245,0.4)" : "#1d4368"}` }}>
             All types
           </button>
-          {REQUEST_TYPES.map((t) => (
-            <button key={t} onClick={() => setFilterType(t)}
-              className="rounded-full px-3 py-1 text-[11.5px] font-semibold transition"
-              style={{ background: filterType === t ? TYPE_COLOR[t] + "22" : "#0a2540", color: filterType === t ? TYPE_COLOR[t] : "#858889", border: `1px solid ${filterType === t ? TYPE_COLOR[t] + "55" : "#1d4368"}` }}>
-              {TYPE_LABELS[t]}
-            </button>
-          ))}
+          {uniqueTypes.map((t) => {
+            const color = typeColor(t);
+            return (
+              <button key={t} onClick={() => setFilterType(t)}
+                className="rounded-full px-3 py-1 text-[11.5px] font-semibold transition"
+                style={{ background: filterType === t ? color + "22" : "#0a2540", color: filterType === t ? color : "#858889", border: `1px solid ${filterType === t ? color + "55" : "#1d4368"}` }}>
+                {t}
+              </button>
+            );
+          })}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
