@@ -605,6 +605,51 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
     setSelected(allSelected ? new Set() : new Set(filteredIds));
   };
 
+  const exportToCSV = (rows: Advisor[]) => {
+    const headers = [
+      "Name", "NMLS #", "Brand / Team", "Division Lead", "Email", "Phone",
+      "Street Address", "City", "State", "Zip", "Region", "License States",
+      "Status", "Next Audit Due",
+      "Audit Form", "Matrix", "Canva", "Social Tool",
+      "Website", "Facebook", "Instagram", "LinkedIn", "TikTok", "YouTube", "Google Business", "Zillow", "Yelp",
+      "Open Issues",
+    ];
+
+    const escape = (v: string | null | undefined) => {
+      if (v == null) return "";
+      const s = String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const lines = [
+      headers.join(","),
+      ...rows.map((a) => {
+        const ch = (platform: string) => a.channels.find((c) => c.platform === platform)?.url ?? "";
+        return [
+          a.name, a.nmlsNumber, a.brand, a.leader, a.email, a.phone,
+          a.streetAddress, a.city, a.state, a.zip, a.region,
+          a.licenseStates?.join("; "),
+          a.status, a.nextAuditDue ? new Date(a.nextAuditDue).toLocaleDateString() : "",
+          a.auditFormUrl ? "Complete" : "Pending",
+          a.matrixUrl ? "Complete" : "Pending",
+          a.canvaUrl ? "Complete" : "Pending",
+          a.socialToolUrl ? "Complete" : "Pending",
+          ch("WEBSITE"), ch("FACEBOOK"), ch("INSTAGRAM"), ch("LINKEDIN"),
+          ch("TIKTOK"), ch("YOUTUBE"), ch("GOOGLE_BUSINESS"), ch("ZILLOW"), ch("YELP"),
+          String(a.openIssues),
+        ].map(escape).join(",");
+      }),
+    ];
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `advisors-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const bulkDelete = async () => {
     const names = advisors.filter((a) => selected.has(a.id)).map((a) => a.name);
     if (!confirm(`Delete ${selected.size} advisor${selected.size !== 1 ? "s" : ""}?\n\n${names.join(", ")}\n\nThis cannot be undone.`)) return;
@@ -838,6 +883,17 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
             placeholder="Search by name, brand, NMLS, city…"
             className="w-full bg-transparent text-[12px] outline-none placeholder:text-slate-500" style={{ color: "#e2e8f0" }} />
         </div>
+        <button
+          onClick={() => exportToCSV(filtered)}
+          className="flex h-9 items-center gap-1.5 rounded-md px-3 text-[11.5px] font-semibold transition hover:brightness-110"
+          style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
+          title="Export all visible advisors to Excel/CSV"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Export {filtered.length !== advisors.length ? `${filtered.length} ` : "All "}
+        </button>
       </div>
 
       {/* Directory table */}
@@ -976,6 +1032,16 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
             style={{ background: "#14375a", color: "#a8aaab", border: "1px solid #1d4368" }}
           >
             Deselect
+          </button>
+          <button
+            onClick={() => exportToCSV(advisors.filter((a) => selected.has(a.id)))}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110"
+            style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export {selected.size}
           </button>
           <button
             onClick={bulkDelete}
