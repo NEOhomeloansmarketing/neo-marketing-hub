@@ -1,12 +1,12 @@
-import { TopBar } from "@/components/topbar/TopBar";
-import { AdvisorTable } from "@/components/advisors/AdvisorTable";
+import { AdvisorsPageShell } from "@/components/advisors/AdvisorsPageShell";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
+import { getApiUser } from "@/lib/api-auth";
 
 export default async function AdvisorsPage() {
-  await requireAuth();
+  const user = await getApiUser();
+  if (!user) return null;
 
-  let advisors: Parameters<typeof AdvisorTable>[0]["advisors"] = [];
+  let advisors: any[] = [];
   let leaders: string[] = [];
 
   try {
@@ -47,16 +47,5 @@ export default async function AdvisorsPage() {
     // DB not ready
   }
 
-  return (
-    <>
-      <TopBar
-        title="Advisor Compliance"
-        subtitle="Audit tracker for every advisor's public web & social presence"
-        primaryAction="+ New advisor"
-      />
-      <div className="mt-6">
-        <AdvisorTable advisors={advisors} leaders={leaders} />
-      </div>
-    </>
-  );
+  return <AdvisorsPageShell advisors={advisors} leaders={leaders} />;
 }

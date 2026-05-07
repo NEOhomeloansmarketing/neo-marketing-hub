@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatCard } from "@/components/ui/StatCard";
 import { Chip } from "@/components/ui/Chip";
@@ -35,17 +35,21 @@ interface Advisor {
 interface AdvisorTableProps {
   advisors: Advisor[];
   leaders: string[];
+  openCompose?: boolean;
+  onComposeClose?: () => void;
 }
 
 const CHANNEL_DEFS = [
+  { key: "WEBSITE", label: "W", full: "Website", color: "#5bcbf5" },
   { key: "FACEBOOK", label: "FB", full: "Facebook", color: "#818cf8" },
   { key: "INSTAGRAM", label: "IG", full: "Instagram", color: "#f472b6" },
   { key: "LINKEDIN", label: "in", full: "LinkedIn", color: "#60a5fa" },
   { key: "TIKTOK", label: "TT", full: "TikTok", color: "#ec4899" },
   { key: "YOUTUBE", label: "YT", full: "YouTube", color: "#ef4444" },
   { key: "GOOGLE_BUSINESS", label: "GB", full: "Google Business", color: "#fbbf24" },
+  { key: "ZILLOW", label: "Zi", full: "Zillow", color: "#06b6d4" },
+  { key: "YELP", label: "Yp", full: "Yelp", color: "#f97316" },
   { key: "X", label: "X", full: "X / Twitter", color: "#cbd5e1" },
-  { key: "THREADS", label: "Th", full: "Threads", color: "#a3a3a3" },
 ];
 
 function ChannelChip({ def, channel }: { def: (typeof CHANNEL_DEFS)[0]; channel?: AdvisorChannel }) {
@@ -253,10 +257,86 @@ function AdvisorDrawerContent({ advisor, onClose }: { advisor: Advisor; onClose:
   );
 }
 
-export function AdvisorTable({ advisors, leaders }: AdvisorTableProps) {
+const ADVISOR_COLORS = ["#5bcbf5", "#6366f1", "#f59e0b", "#22c55e", "#f43f5e", "#a855f7", "#14b8a6", "#fb923c"];
+
+const inputStyle: React.CSSProperties = { background: "#0a2540", border: "1px solid #1d4368", color: "#e2e8f0", outline: "none" };
+
+export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, onComposeClose }: AdvisorTableProps) {
+  const [advisors, setAdvisors] = useState(initialAdvisors);
   const [leaderFilter, setLeaderFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+
+  useEffect(() => {
+    if (openCompose) { setComposing(true); onComposeClose?.(); }
+  }, [openCompose]);
+
+  // New advisor form state
+  const [newName, setNewName] = useState("");
+  const [newNmls, setNewNmls] = useState("");
+  const [newBrand, setNewBrand] = useState("");
+  const [newLeader, setNewLeader] = useState("");
+  const [newCity, setNewCity] = useState("");
+  const [newState, setNewState] = useState("");
+  const [newWebsite, setNewWebsite] = useState("");
+  const [newLinkedin, setNewLinkedin] = useState("");
+  const [newFacebook, setNewFacebook] = useState("");
+  const [newInstagram, setNewInstagram] = useState("");
+  const [newGmb, setNewGmb] = useState("");
+  const [newYoutube, setNewYoutube] = useState("");
+  const [newTiktok, setNewTiktok] = useState("");
+  const [newZillow, setNewZillow] = useState("");
+  const [newYelp, setNewYelp] = useState("");
+  const [newColor, setNewColor] = useState(ADVISOR_COLORS[0]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const resetForm = () => {
+    setNewName(""); setNewNmls(""); setNewBrand(""); setNewLeader(""); setNewCity(""); setNewState("");
+    setNewWebsite(""); setNewLinkedin(""); setNewFacebook(""); setNewInstagram(""); setNewGmb("");
+    setNewYoutube(""); setNewTiktok(""); setNewZillow(""); setNewYelp(""); setNewColor(ADVISOR_COLORS[0]);
+    setSaveError("");
+  };
+
+  const handleAddAdvisor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const res = await fetch("/api/advisors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(), nmlsNumber: newNmls.trim(), brand: newBrand.trim() || undefined,
+          leader: newLeader.trim() || undefined, city: newCity.trim() || undefined, state: newState.trim() || undefined,
+          color: newColor, website: newWebsite.trim() || undefined, linkedinUrl: newLinkedin.trim() || undefined,
+          facebookUrl: newFacebook.trim() || undefined, instagramUrl: newInstagram.trim() || undefined,
+          gmbUrl: newGmb.trim() || undefined, youtubeUrl: newYoutube.trim() || undefined,
+          tiktokUrl: newTiktok.trim() || undefined, zillowUrl: newZillow.trim() || undefined, yelpUrl: newYelp.trim() || undefined,
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed"); }
+      const advisor = await res.json();
+      setAdvisors(prev => [...prev, {
+        id: advisor.id, name: advisor.name, nmlsNumber: advisor.nmlsNumber, brand: advisor.brand,
+        leader: advisor.leader, city: advisor.city, state: advisor.state, color: advisor.color,
+        initials: advisor.initials, auditFormUrl: advisor.auditFormUrl, matrixUrl: advisor.matrixUrl,
+        canvaUrl: advisor.canvaUrl, socialToolUrl: advisor.socialToolUrl, status: advisor.status,
+        channels: advisor.channels.map((c: any) => ({ id: c.id, platform: c.platform, url: c.url, label: c.label })),
+        openIssues: 0,
+      }]);
+      resetForm();
+      setComposing(false);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to add advisor");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const allLeaders = Array.from(new Set([...leaders, ...advisors.map(a => a.leader).filter(Boolean) as string[]])).sort();
 
   const filtered = advisors.filter((a) => {
     if (leaderFilter !== "all" && a.leader !== leaderFilter) return false;
@@ -300,12 +380,115 @@ export function AdvisorTable({ advisors, leaders }: AdvisorTableProps) {
         />
       </div>
 
+      {/* Add advisor form */}
+      {composing && (
+        <div className="fixed inset-0 z-50 flex" onClick={() => setComposing(false)}>
+          <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)" }} />
+          <div className="relative ml-auto flex h-full w-full max-w-[600px] flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "#061320", borderLeft: "1px solid #1d4368" }}>
+            <div className="flex shrink-0 items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #1d4368", background: "#0a2540" }}>
+              <div>
+                <div className="text-[16px] font-bold tracking-tight text-slate-100">Add Advisor</div>
+                <div className="mt-0.5 text-[11px]" style={{ color: "#858889" }}>Fill in what you know — you can edit later</div>
+              </div>
+              <button onClick={() => setComposing(false)} className="grid h-8 w-8 place-items-center rounded-lg hover:bg-white/[0.06]" style={{ color: "#a8aaab" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleAddAdvisor} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Preferred name *</label>
+                  <input autoFocus value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Aaron Thomas"
+                    className="w-full rounded-lg px-3 py-2.5 text-[12.5px]" style={inputStyle} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Brand / team name</label>
+                  <input value={newBrand} onChange={e => setNewBrand(e.target.value)} placeholder="e.g. The Welty Team"
+                    className="w-full rounded-lg px-3 py-2.5 text-[12.5px]" style={inputStyle} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>NMLS #</label>
+                  <input value={newNmls} onChange={e => setNewNmls(e.target.value)} placeholder="e.g. 1713681"
+                    className="w-full rounded-lg px-3 py-2.5 text-[12.5px]" style={inputStyle} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Divisional leader</label>
+                  <input value={newLeader} onChange={e => setNewLeader(e.target.value)} placeholder="e.g. Josh Mettle"
+                    className="w-full rounded-lg px-3 py-2.5 text-[12.5px]" style={inputStyle} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>City</label>
+                  <input value={newCity} onChange={e => setNewCity(e.target.value)} placeholder="e.g. Round Rock"
+                    className="w-full rounded-lg px-3 py-2.5 text-[12.5px]" style={inputStyle} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>State</label>
+                  <input value={newState} onChange={e => setNewState(e.target.value)} placeholder="e.g. TX"
+                    className="w-full rounded-lg px-3 py-2.5 text-[12.5px]" style={inputStyle} />
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Color</div>
+                <div className="flex gap-2">
+                  {ADVISOR_COLORS.map(c => (
+                    <button key={c} type="button" onClick={() => setNewColor(c)}
+                      className="h-6 w-6 rounded-full transition"
+                      style={{ background: c, boxShadow: newColor === c ? `0 0 0 2px #061320, 0 0 0 4px ${c}` : "none" }} />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Links & social profiles</div>
+                <div className="space-y-2">
+                  {[
+                    { label: "Website", value: newWebsite, onChange: setNewWebsite, placeholder: "https://..." },
+                    { label: "LinkedIn", value: newLinkedin, onChange: setNewLinkedin, placeholder: "https://linkedin.com/in/..." },
+                    { label: "Facebook", value: newFacebook, onChange: setNewFacebook, placeholder: "https://facebook.com/..." },
+                    { label: "Instagram", value: newInstagram, onChange: setNewInstagram, placeholder: "https://instagram.com/..." },
+                    { label: "Google Business", value: newGmb, onChange: setNewGmb, placeholder: "https://share.google/..." },
+                    { label: "YouTube", value: newYoutube, onChange: setNewYoutube, placeholder: "https://youtube.com/..." },
+                    { label: "TikTok", value: newTiktok, onChange: setNewTiktok, placeholder: "https://tiktok.com/@..." },
+                    { label: "Zillow", value: newZillow, onChange: setNewZillow, placeholder: "https://zillow.com/lender-profile/..." },
+                    { label: "Yelp", value: newYelp, onChange: setNewYelp, placeholder: "https://yelp.com/..." },
+                  ].map(({ label, value, onChange, placeholder }) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <div className="w-32 shrink-0 text-[11.5px] font-medium" style={{ color: "#a8aaab" }}>{label}</div>
+                      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+                        className="flex-1 rounded-lg px-3 py-2 text-[12px]" style={inputStyle} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {saveError && <p className="text-[12px]" style={{ color: "#fca5a5" }}>{saveError}</p>}
+            </form>
+            <div className="flex shrink-0 items-center justify-end gap-2 px-6 py-4" style={{ borderTop: "1px solid #1d4368", background: "#0a2540" }}>
+              <button type="button" onClick={() => { setComposing(false); resetForm(); }}
+                className="rounded-lg px-4 py-2 text-[12.5px] font-semibold hover:bg-white/[0.04]" style={{ color: "#a8aaab" }}>
+                Cancel
+              </button>
+              <button onClick={handleAddAdvisor} disabled={saving || !newName.trim()}
+                className="rounded-lg px-5 py-2 text-[12.5px] font-bold text-white disabled:opacity-40"
+                style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", boxShadow: "0 4px 18px rgba(91,203,245,0.35)" }}>
+                {saving ? "Saving…" : "Add advisor"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <Chip active={leaderFilter === "all"} onClick={() => setLeaderFilter("all")}>
           All divisions
         </Chip>
-        {leaders.map((l) => (
+        {allLeaders.map((l) => (
           <Chip key={l} active={leaderFilter === l} onClick={() => setLeaderFilter(l)}>
             {l}
           </Chip>

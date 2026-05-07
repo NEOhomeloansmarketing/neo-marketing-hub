@@ -313,6 +313,11 @@ function NewTaskPanel({
               style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }}
             />
           </div>
+
+          {/* Supporting documents note */}
+          <div className="rounded-lg px-4 py-3 text-[12px] leading-relaxed" style={{ background: "#0e2b48", border: "1px dashed #1d4368", color: "#858889" }}>
+            <span className="font-semibold" style={{ color: "#5bcbf5" }}>Tip:</span> Save the task first, then open it to attach files and images.
+          </div>
         </div>
 
         {/* Footer */}

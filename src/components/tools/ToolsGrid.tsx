@@ -17,6 +17,8 @@ interface Tool {
   lastAccessed?: string | null;
   notesMd?: string | null;
   credKind: string;
+  username?: string | null;
+  credPassword?: string | null;
   vaultLink?: string | null;
   mfaMethod?: string | null;
   owner?: {
@@ -127,49 +129,23 @@ function ToolDrawerContent({ tool, onClose }: { tool: Tool; onClose: () => void 
         </p>
       )}
 
-      {/* Credential reference */}
-      <div
-        className="mt-5 rounded-lg p-4"
-        style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
-      >
-        <div
-          className="text-[11px] font-semibold uppercase"
-          style={{ color: "#858889", letterSpacing: "0.12em" }}
-        >
-          Credential reference
+      {/* Credentials */}
+      <div className="mt-5 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+        <div className="text-[11px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.12em" }}>
+          Credentials
         </div>
         <div className="mt-3 space-y-2">
-          <CredRow label="Username" value="marketing@neohomeloans.com" />
-          <CredRow
-            label="Password"
-            value="See 1Password vault"
-            masked
-            shown={passwordShown}
-            onToggle={() => setPasswordShown((v) => !v)}
-          />
-          {tool.mfaMethod && (
-            <CredRow label="MFA" value={tool.mfaMethod} />
+          {tool.username ? (
+            <CredRow label="Username" value={tool.username} copy />
+          ) : (
+            <div className="text-[12px]" style={{ color: "#5d6566" }}>No username stored — edit to add one.</div>
           )}
-          {tool.vaultLink && (
-            <CredRow label="1Password ref" value={tool.vaultLink} copy />
+          {tool.credPassword && (
+            <CredRow label="Password" value={tool.credPassword} masked shown={passwordShown} onToggle={() => setPasswordShown((v) => !v)} copy />
           )}
+          {tool.mfaMethod && <CredRow label="MFA" value={tool.mfaMethod} />}
+          {tool.vaultLink && <CredRow label="Vault link" value={tool.vaultLink} copy />}
         </div>
-      </div>
-
-      {/* Actions */}
-      <div className="mt-5 grid grid-cols-2 gap-2">
-        <button
-          className="rounded-md py-2 text-[12px] font-semibold text-white"
-          style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)" }}
-        >
-          Open in 1Password
-        </button>
-        <button
-          className="rounded-md py-2 text-[12px] font-medium"
-          style={{ background: "#14375a", color: "#cbd5e1", border: "1px solid #1d4368" }}
-        >
-          Request access
-        </button>
       </div>
 
       {/* Owner + last accessed */}
@@ -215,16 +191,10 @@ function ToolDrawerContent({ tool, onClose }: { tool: Tool; onClose: () => void 
       </div>
 
       {/* Security notice */}
-      <div
-        className="mt-5 rounded-md p-3 text-[11.5px] leading-relaxed"
-        style={{
-          background: "rgba(91,203,245,0.06)",
-          border: "1px solid rgba(91,203,245,0.25)",
-          color: "#cbd5e1",
-        }}
-      >
-        <span className="font-semibold text-slate-100">Credentials live in 1Password.</span>{" "}
-        This page indexes tools and access — passwords are never stored here.
+      <div className="mt-5 rounded-md p-3 text-[11.5px] leading-relaxed"
+        style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)", color: "#cbd5e1" }}>
+        <span className="font-semibold text-slate-100">Internal use only.</span>{" "}
+        Credentials stored here are visible to all team members with access.
       </div>
     </>
   );
@@ -303,7 +273,10 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
   const [newCategory, setNewCategory] = useState("");
-  const [newCredKind, setNewCredKind] = useState("SHARED");
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordShown, setNewPasswordShown] = useState(false);
+  const [newNotes, setNewNotes] = useState("");
 
   const handleAddTool = async () => {
     if (!newName.trim()) return;
@@ -315,7 +288,10 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
           name: newName.trim(),
           url: newUrl.trim() || undefined,
           category: newCategory.trim() || "Other",
-          credKind: newCredKind,
+          credKind: "SHARED",
+          username: newUsername.trim() || undefined,
+          credPassword: newPassword.trim() || undefined,
+          notesMd: newNotes.trim() || undefined,
         }),
       });
       if (res.ok) {
@@ -327,6 +303,8 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
             url: tool.url ?? "",
             category: tool.category ?? "Other",
             credKind: tool.credKind,
+            username: tool.username ?? null,
+            credPassword: tool.credPassword ?? null,
             owner: tool.owner ?? null,
             glyph: tool.glyph ?? null,
             color: tool.color ?? null,
@@ -340,7 +318,7 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
         ]);
       }
     } catch { /* silently fail */ }
-    setNewName(""); setNewUrl(""); setNewCategory(""); closeCompose();
+    setNewName(""); setNewUrl(""); setNewCategory(""); setNewUsername(""); setNewPassword(""); setNewNotes(""); closeCompose();
   };
 
   const filtered = tools.filter((t) => {
@@ -430,45 +408,53 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Tool name *</label>
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+              <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Escape") closeCompose(); }}
-                placeholder="e.g. Salesforce"
-                className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
-                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}
-              />
+                placeholder="e.g. Canva" className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }} />
             </div>
             <div>
               <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>URL</label>
-              <input
-                value={newUrl}
-                onChange={(e) => setNewUrl(e.target.value)}
-                placeholder="e.g. salesforce.com"
+              <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="e.g. canva.com"
                 className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
-                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}
-              />
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }} />
             </div>
             <div>
               <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Category</label>
-              <input
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                placeholder="e.g. CRM"
+              <input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="e.g. Design"
                 className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
-                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}
-              />
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }} />
             </div>
             <div>
-              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Credentials</label>
-              <select value={newCredKind} onChange={(e) => setNewCredKind(e.target.value)}
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Username / email</label>
+              <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. marketing@neohomeloans.com"
                 className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
-                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }}>
-                <option value="SHARED">Shared login</option>
-                <option value="SSO">SSO</option>
-                <option value="VAULT">1Password Vault</option>
-              </select>
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Password</label>
+              <div className="relative">
+                <input type={newPasswordShown ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Store password here"
+                  className="w-full rounded-md px-3 py-2 pr-9 text-[12.5px] outline-none font-mono"
+                  style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }} />
+                <button type="button" onClick={() => setNewPasswordShown(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded"
+                  style={{ color: "#5d6566" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {newPasswordShown
+                      ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></>
+                      : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>
+                    }
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-[10.5px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.1em" }}>Notes</label>
+              <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="Any additional notes…"
+                className="w-full rounded-md px-3 py-2 text-[12.5px] outline-none"
+                style={{ background: "#14375a", border: "1px solid #1d4368", color: "#e2e8f0" }} />
             </div>
           </div>
           <div className="mt-3 flex justify-end gap-2">

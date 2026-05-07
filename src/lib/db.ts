@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+export { AdvisorPlatform, IdeaStatus } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

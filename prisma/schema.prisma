@@ -104,6 +104,7 @@ enum AdvisorPlatform {
   TIKTOK
   YOUTUBE
   ZILLOW
+  YELP
   GOOGLE_BUSINESS
   X
   THREADS
@@ -354,6 +355,8 @@ model Tool {
   billingCycle       String?
   renewsOn           DateTime?
   paymentMethodLast4 String?
+  username           String?
+  credPassword       String?
   vaultLink          String?
   mfaMethod          String?
   recoveryContact    String?

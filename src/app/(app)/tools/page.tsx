@@ -1,9 +1,10 @@
 import { ToolsPageShell } from "@/components/tools/ToolsPageShell";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth-helpers";
+import { getApiUser } from "@/lib/api-auth";
 
 export default async function ToolsPage() {
-  await requireAuth();
+  const user = await getApiUser();
+  if (!user) return null;
 
   let tools: React.ComponentProps<typeof ToolsPageShell>["tools"] = [];
   let categories: string[] = [];
@@ -25,6 +26,8 @@ export default async function ToolsPage() {
       lastAccessed: t.lastAccessed,
       notesMd: t.notesMd,
       credKind: t.credKind,
+      username: t.username,
+      credPassword: t.credPassword,
       vaultLink: t.vaultLink,
       mfaMethod: t.mfaMethod,
       owner: t.owner

@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, url, category, credKind, seats, notesMd, vaultLink, ownerUserId } = body;
+    const { name, url, category, credKind, seats, notesMd, vaultLink, ownerUserId, username, credPassword } = body;
 
     if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     }
 
     const tool = await db.tool.create({
-      data: { name, url, category, credKind: credKind ?? "SHARED", seats, notesMd, vaultLink, ownerUserId: resolvedOwnerUserId },
+      data: { name, url, category, credKind: credKind ?? "SHARED", seats, notesMd, vaultLink, ownerUserId: resolvedOwnerUserId, username, credPassword },
       include: { owner: true },
     });
     return NextResponse.json(tool, { status: 201 });
