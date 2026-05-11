@@ -67,6 +67,28 @@ enum AttendeeRole {
   OPTIONAL
 }
 
+model Campaign {
+  id           String    @id @default(cuid())
+  title        String
+  description  String?
+  month        Int       // 1–12
+  year         Int
+  dudaTemplate String?
+  emailBlasts  String?
+  smsBlasts    String?
+  canvaLink1   String?
+  canvaLink2   String?
+  canvaLink3   String?
+  videoScript  String?
+  launched     Boolean   @default(false)
+  launchedAt   DateTime?
+  teamId       String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  team Team? @relation(fields: [teamId], references: [id])
+}
+
 enum ActionStatus {
   OPEN
   IN_PROGRESS
@@ -190,6 +212,7 @@ model Team {
   actionItems ActionItem[]
   advisors    Advisor[]
   tools       Tool[]
+  campaigns   Campaign[]
 }
 
 model TeamMember {
