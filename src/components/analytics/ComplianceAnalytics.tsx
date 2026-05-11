@@ -18,6 +18,7 @@ interface ComplianceStats {
     matrix: number;
     canva: number;
     socialTool: number;
+    weekIncrease: { auditForm: number; matrix: number; canva: number; socialTool: number };
   }[];
   weeklyAdded: { label: string; count: number }[];
   weeklyIncrease: {
@@ -308,14 +309,20 @@ export function ComplianceAnalytics({ stats }: { stats: ComplianceStats }) {
                 const overallPct = Math.round(
                   ((row.auditForm + row.matrix + row.canva + row.socialTool) / (row.total * 4)) * 100
                 );
-                const cell = (count: number) => {
+                const cell = (count: number, delta: number) => {
                   const p = Math.round((count / (row.total || 1)) * 100);
                   const color = p === 100 ? "#22c55e" : p >= 50 ? "#f59e0b" : "#fca5a5";
                   return (
                     <td className="px-4 py-3 text-[12px]">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span style={{ color }} className="font-semibold tabular-nums w-8">{p}%</span>
                         <span style={{ color: "#5d6566" }} className="text-[10.5px]">{count}/{row.total}</span>
+                        {delta > 0 && (
+                          <span className="text-[10px] font-bold tabular-nums rounded px-1 py-0.5"
+                            style={{ color: "#22c55e", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)" }}>
+                            +{delta}
+                          </span>
+                        )}
                       </div>
                     </td>
                   );
@@ -324,10 +331,10 @@ export function ComplianceAnalytics({ stats }: { stats: ComplianceStats }) {
                   <tr key={row.leader} style={{ borderBottom: i === stats.byLeader.length - 1 ? "none" : "1px solid #1d4368" }}>
                     <td className="px-4 py-3 text-[13px] font-semibold text-slate-100">{row.leader}</td>
                     <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: "#a8aaab" }}>{row.total}</td>
-                    {cell(row.auditForm)}
-                    {cell(row.matrix)}
-                    {cell(row.canva)}
-                    {cell(row.socialTool)}
+                    {cell(row.auditForm, row.weekIncrease.auditForm)}
+                    {cell(row.matrix, row.weekIncrease.matrix)}
+                    {cell(row.canva, row.weekIncrease.canva)}
+                    {cell(row.socialTool, row.weekIncrease.socialTool)}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-16">

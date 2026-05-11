@@ -33,7 +33,7 @@ export default async function AnalyticsPage() {
       socialTool: 0,
     },
     channels: [] as { platform: string; label: string; count: number }[],
-    byLeader: [] as { leader: string; total: number; auditForm: number; matrix: number; canva: number; socialTool: number }[],
+    byLeader: [] as { leader: string; total: number; auditForm: number; matrix: number; canva: number; socialTool: number; weekIncrease: { auditForm: number; matrix: number; canva: number; socialTool: number } }[],
     weeklyAdded: [] as { label: string; count: number }[],
     weeklyIncrease: [] as { label: string; auditForm: number; matrix: number; canva: number; socialTool: number }[],
   };
@@ -137,15 +137,33 @@ export default async function AnalyticsPage() {
       if (!leaderMap.has(key)) leaderMap.set(key, []);
       leaderMap.get(key)!.push(a);
     }
+    // Current & previous week windows for per-leader deltas
+    const dayOfWeek = now.getDay(); // 0 = Sunday
+    const currentWeekStart = new Date(now);
+    currentWeekStart.setDate(now.getDate() - dayOfWeek);
+    currentWeekStart.setHours(0, 0, 0, 0);
+    const prevWeekStart = new Date(currentWeekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+
     complianceStats.byLeader = Array.from(leaderMap.entries())
-      .map(([leader, advisors]) => ({
-        leader,
-        total: advisors.length,
-        auditForm: advisors.filter((a) => !!a.auditFormUrl).length,
-        matrix: advisors.filter((a) => !!a.matrixUrl).length,
-        canva: advisors.filter((a) => !!a.canvaUrl).length,
-        socialTool: advisors.filter((a) => !!a.socialToolUrl).length,
-      }))
+      .map(([leader, advisors]) => {
+        const inCurrent = advisors.filter((a) => a.updatedAt >= currentWeekStart && a.updatedAt <= now);
+        const inPrev = advisors.filter((a) => a.updatedAt >= prevWeekStart && a.updatedAt < currentWeekStart);
+        return {
+          leader,
+          total: advisors.length,
+          auditForm: advisors.filter((a) => !!a.auditFormUrl).length,
+          matrix: advisors.filter((a) => !!a.matrixUrl).length,
+          canva: advisors.filter((a) => !!a.canvaUrl).length,
+          socialTool: advisors.filter((a) => !!a.socialToolUrl).length,
+          weekIncrease: {
+            auditForm: inCurrent.filter((a) => !!a.auditFormUrl).length - inPrev.filter((a) => !!a.auditFormUrl).length,
+            matrix: inCurrent.filter((a) => !!a.matrixUrl).length - inPrev.filter((a) => !!a.matrixUrl).length,
+            canva: inCurrent.filter((a) => !!a.canvaUrl).length - inPrev.filter((a) => !!a.canvaUrl).length,
+            socialTool: inCurrent.filter((a) => !!a.socialToolUrl).length - inPrev.filter((a) => !!a.socialToolUrl).length,
+          },
+        };
+      })
       .sort((a, b) => b.total - a.total);
 
     // Weekly advisors added (last 8 weeks)
