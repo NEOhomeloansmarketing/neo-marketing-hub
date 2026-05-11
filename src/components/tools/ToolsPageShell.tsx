@@ -13,8 +13,6 @@ export function ToolsPageShell(props: Props) {
       <TopBar
         title="Tools & Logins"
         subtitle="All software, credentials, and access"
-        primaryAction="+ Add tool"
-        onPrimaryAction={() => setComposing(true)}
       />
       <div className="mt-6">
         <ToolsGrid {...props} openCompose={composing} onComposeClose={() => setComposing(false)} />

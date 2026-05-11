@@ -30,7 +30,6 @@ export default async function MembersPage() {
       <TopBar
         title="Team Members"
         subtitle="Everyone on the NEO marketing team"
-        primaryAction="+ Invite member"
       />
       <div className="mt-6">
         {members.length === 0 ? (

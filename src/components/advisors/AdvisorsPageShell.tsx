@@ -16,8 +16,6 @@ export function AdvisorsPageShell({ advisors, leaders }: AdvisorsPageShellProps)
       <TopBar
         title="Advisor Compliance"
         subtitle="Audit tracker for every advisor's public web & social presence"
-        primaryAction="+ New advisor"
-        onPrimaryAction={() => setComposing(true)}
       />
       <div className="mt-6">
         <AdvisorTable advisors={advisors} leaders={leaders} openCompose={composing} onComposeClose={() => setComposing(false)} />

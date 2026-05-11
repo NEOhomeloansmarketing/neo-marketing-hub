@@ -17,8 +17,6 @@ export function TeamsPageShell({ initialTeams, allUsers, currentUserId }: TeamsP
       <TopBar
         title="Teams"
         subtitle="Organize your workspace into focused groups"
-        primaryAction="+ New team"
-        onPrimaryAction={() => setComposing(true)}
       />
       <div className="mt-6">
         <TeamsView

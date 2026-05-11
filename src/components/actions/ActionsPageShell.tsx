@@ -13,8 +13,6 @@ export function ActionsPageShell(props: Props) {
       <TopBar
         title="Action Items"
         subtitle="Every action item across all meetings"
-        primaryAction="+ New action"
-        onPrimaryAction={() => setComposing(true)}
       />
       <div className="mt-6">
         <ActionItemsBoard {...props} openCompose={composing} onComposeClose={() => setComposing(false)} />

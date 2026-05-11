@@ -8,7 +8,6 @@ export default async function ProjectsPage() {
       <TopBar
         title="Projects"
         subtitle="Track campaigns and initiatives across the team"
-        primaryAction="+ New project"
       />
       <div className="mt-16 flex flex-col items-center gap-4 text-center">
         <div

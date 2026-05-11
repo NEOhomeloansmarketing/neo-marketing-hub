@@ -75,8 +75,6 @@ export default async function MeetingsPage() {
       <TopBar
         title="Meetings"
         subtitle="Weekly notes, decisions, and action items"
-        primaryAction="+ New meeting"
-        primaryActionHref="/meetings/new"
       />
       <div className="mt-6">
         <MeetingsList meetings={meetings} stats={stats} />

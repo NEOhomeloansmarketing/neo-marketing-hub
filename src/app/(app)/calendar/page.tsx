@@ -8,7 +8,6 @@ export default async function CalendarPage() {
       <TopBar
         title="Calendar"
         subtitle="Team schedule, meetings, and campaign milestones"
-        primaryAction="+ New event"
       />
       <div className="mt-16 flex flex-col items-center gap-4 text-center">
         <div

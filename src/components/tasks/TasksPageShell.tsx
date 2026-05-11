@@ -13,8 +13,6 @@ export function TasksPageShell(props: Props) {
       <TopBar
         title="My Tasks"
         subtitle="Personal queue and team assignments"
-        primaryAction="+ New task"
-        onPrimaryAction={() => setComposing(true)}
       />
       <div className="mt-6">
         <TasksView {...props} openCompose={composing} onComposeClose={() => setComposing(false)} />

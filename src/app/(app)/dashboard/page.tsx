@@ -110,7 +110,6 @@ export default async function DashboardPage() {
       <TopBar
         title="Dashboard"
         subtitle="Snapshot of your team's marketing operations"
-        primaryAction="+ New report"
       />
       <div className="mt-6 space-y-6">
         {/* Top stats */}

@@ -8,7 +8,6 @@ export default async function CampaignsPage() {
       <TopBar
         title="Campaigns"
         subtitle="Plan, launch, and measure marketing campaigns"
-        primaryAction="+ New campaign"
       />
       <div className="mt-16 flex flex-col items-center gap-4 text-center">
         <div

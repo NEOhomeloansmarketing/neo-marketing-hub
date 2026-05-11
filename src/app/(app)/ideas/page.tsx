@@ -57,7 +57,6 @@ export default async function IdeasPage() {
       <TopBar
         title="Idea Board"
         subtitle="Capture, vote, and ship the team's best ideas"
-        primaryAction="+ New idea"
       />
       <div className="mt-6">
         <IdeasView ideas={ideas} currentUserId={currentUserId} />
