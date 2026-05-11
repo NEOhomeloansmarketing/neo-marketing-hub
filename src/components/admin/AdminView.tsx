@@ -31,6 +31,7 @@ interface Team {
 interface AdminViewProps {
   teams: Team[];
   users: TeamUser[];
+  pendingUsers: TeamUser[];
 }
 
 const TEAM_COLORS = ["#5bcbf5", "#6366f1", "#f59e0b", "#22c55e", "#f43f5e", "#a855f7", "#14b8a6", "#fb923c"];
@@ -261,7 +262,7 @@ function TeamCard({
   );
 }
 
-export function AdminView({ teams: initialTeams, users }: AdminViewProps) {
+export function AdminView({ teams: initialTeams, users, pendingUsers: initialPending }: AdminViewProps) {
   const [teams, setTeams] = useState(initialTeams);
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [newName, setNewName] = useState("");
@@ -269,8 +270,8 @@ export function AdminView({ teams: initialTeams, users }: AdminViewProps) {
   const [newColor, setNewColor] = useState(TEAM_COLORS[0]);
   const [creating, setCreating] = useState(false);
 
-  // User admin toggles
   const [userList, setUserList] = useState(users);
+  const [pendingList, setPendingList] = useState(initialPending);
 
   const toggleAdmin = async (userId: string, current: boolean) => {
     const res = await fetch(`/api/admin/users/${userId}`, {
@@ -280,6 +281,30 @@ export function AdminView({ teams: initialTeams, users }: AdminViewProps) {
     });
     if (res.ok) {
       setUserList((prev) => prev.map((u) => (u.id === userId ? { ...u, isAdmin: !current } : u)));
+    }
+  };
+
+  const approveUser = async (userId: string) => {
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: true }),
+    });
+    if (res.ok) {
+      const approved = pendingList.find((u) => u.id === userId);
+      if (approved) {
+        setPendingList((prev) => prev.filter((u) => u.id !== userId));
+        setUserList((prev) => [...prev, { ...approved, isActive: true }]);
+      }
+    }
+  };
+
+  const deleteUser = async (userId: string, name: string, fromPending = false) => {
+    if (!confirm(`Permanently delete ${name}? This removes them from the system and cannot be undone.`)) return;
+    const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+    if (res.ok) {
+      if (fromPending) setPendingList((prev) => prev.filter((u) => u.id !== userId));
+      else setUserList((prev) => prev.filter((u) => u.id !== userId));
     }
   };
 
@@ -305,6 +330,51 @@ export function AdminView({ teams: initialTeams, users }: AdminViewProps) {
 
   return (
     <div className="space-y-8">
+
+      {/* Pending Approvals */}
+      {pendingList.length > 0 && (
+        <div>
+          <div className="mb-4 flex items-center gap-3">
+            <h2 className="text-[17px] font-bold text-slate-100">Pending Approval</h2>
+            <span className="rounded-full px-2 py-[2px] text-[11px] font-bold" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)" }}>
+              {pendingList.length}
+            </span>
+          </div>
+          <div className="rounded-xl overflow-hidden" style={{ background: "#0e2b48", border: "1px solid rgba(245,158,11,0.3)" }}>
+            {pendingList.map((u, i) => (
+              <div
+                key={u.id}
+                className="flex items-center gap-3 px-5 py-3"
+                style={{ borderBottom: i === pendingList.length - 1 ? "none" : "1px solid #1d4368" }}
+              >
+                <Avatar name={u.name} color={u.color} initials={u.initials} size={32} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-slate-100">{u.name}</div>
+                  <div className="text-[11px]" style={{ color: "#858889" }}>{u.email}</div>
+                </div>
+                <span className="rounded-full px-2 py-[2px] text-[10px] font-semibold" style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)" }}>
+                  Pending
+                </span>
+                <button
+                  onClick={() => approveUser(u.id)}
+                  className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110"
+                  style={{ background: "rgba(34,197,94,0.12)", color: "#86efac", border: "1px solid rgba(34,197,94,0.25)" }}
+                >
+                  ✓ Approve
+                </button>
+                <button
+                  onClick={() => deleteUser(u.id, u.name, true)}
+                  className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110"
+                  style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" }}
+                >
+                  Deny
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Teams section */}
       <div>
         <div className="mb-4 flex items-center justify-between">
@@ -374,7 +444,7 @@ export function AdminView({ teams: initialTeams, users }: AdminViewProps) {
       <div>
         <div className="mb-4">
           <h2 className="text-[17px] font-bold text-slate-100">All Users</h2>
-          <p className="mt-0.5 text-[12px]" style={{ color: "#858889" }}>Toggle admin access for any user. Admins can manage all workspaces.</p>
+          <p className="mt-0.5 text-[12px]" style={{ color: "#858889" }}>Toggle admin access or remove users from the system entirely.</p>
         </div>
         <div className="rounded-xl overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
           {userList.map((u, i) => (
@@ -399,6 +469,16 @@ export function AdminView({ teams: initialTeams, users }: AdminViewProps) {
                 }}
               >
                 {u.isAdmin ? "Remove admin" : "Make admin"}
+              </button>
+              <button
+                onClick={() => deleteUser(u.id, u.name)}
+                className="grid h-8 w-8 place-items-center rounded-lg transition hover:bg-red-500/10"
+                style={{ color: "#5d6566", border: "1px solid #1d4368" }}
+                title="Delete user"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+                </svg>
               </button>
             </div>
           ))}

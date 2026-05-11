@@ -12,7 +12,7 @@ export default async function AdminPage() {
   const dbUser = await getOrCreateDbUser(user);
   if (!dbUser?.isAdmin) redirect("/dashboard");
 
-  const [teams, users] = await Promise.all([
+  const [teams, allUsers] = await Promise.all([
     db.team.findMany({
       include: {
         members: {
@@ -25,9 +25,12 @@ export default async function AdminPage() {
     }),
     db.user.findMany({
       select: { id: true, name: true, email: true, color: true, initials: true, role: true, isAdmin: true, isActive: true },
-      orderBy: { name: "asc" },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
+
+  const pendingUsers = allUsers.filter((u) => !u.isActive);
+  const activeUsers = allUsers.filter((u) => u.isActive);
 
   return (
     <>
@@ -36,7 +39,7 @@ export default async function AdminPage() {
         subtitle="Manage workspaces, team members, and access"
       />
       <div className="mt-6">
-        <AdminView teams={teams} users={users} />
+        <AdminView teams={teams} users={activeUsers} pendingUsers={pendingUsers} />
       </div>
     </>
   );

@@ -27,7 +27,7 @@ export async function getOrCreateDbUser(supabaseUser: SupabaseUser | null | unde
       .slice(0, 2);
 
     dbUser = await db.user.create({
-      data: { email, name, initials, color: "#5bcbf5", role: "OTHER" },
+      data: { email, name, initials, color: "#5bcbf5", role: "OTHER", isActive: false },
     });
   }
   return dbUser;
