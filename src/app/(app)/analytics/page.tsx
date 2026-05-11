@@ -26,7 +26,6 @@ export default async function AnalyticsPage() {
     total: 0,
     active: 0,
     inactive: 0,
-    avgCompletionPct: 0,
     checklist: {
       auditForm: 0,
       matrix: 0,
@@ -36,7 +35,7 @@ export default async function AnalyticsPage() {
     channels: [] as { platform: string; label: string; count: number }[],
     byLeader: [] as { leader: string; total: number; auditForm: number; matrix: number; canva: number; socialTool: number }[],
     weeklyAdded: [] as { label: string; count: number }[],
-    weeklyChecklist: [] as { label: string; auditForm: number; matrix: number; canva: number; socialTool: number }[],
+    weeklyIncrease: [] as { label: string; auditForm: number; matrix: number; canva: number; socialTool: number }[],
   };
 
   try {
@@ -114,9 +113,6 @@ export default async function AnalyticsPage() {
 
     complianceStats.checklist = { auditForm: af, matrix: mx, canva: cv, socialTool: st };
 
-    const total = allAdvisors.length || 1;
-    complianceStats.avgCompletionPct = Math.round(((af + mx + cv + st) / (total * 4)) * 100);
-
     // Channel adoption
     const PLATFORM_LABELS: Record<string, string> = {
       WEBSITE: "Website", FACEBOOK: "Facebook", INSTAGRAM: "Instagram",
@@ -163,8 +159,8 @@ export default async function AnalyticsPage() {
       return { label, count };
     });
 
-    // Weekly checklist completions — advisors updated each week (proxy for items being checked)
-    complianceStats.weeklyChecklist = Array.from({ length: 8 }, (_, i) => {
+    // Weekly sign-up increases — advisors updated each week with each item set (proxy for new sign-ups)
+    complianceStats.weeklyIncrease = Array.from({ length: 8 }, (_, i) => {
       const weekEnd = new Date(now);
       weekEnd.setDate(weekEnd.getDate() - 7 * (7 - i));
       const weekStart = new Date(weekEnd);
