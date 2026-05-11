@@ -159,14 +159,17 @@ export default async function AnalyticsPage() {
       return { label, count };
     });
 
-    // Weekly sign-up increases — advisors updated each week with each item set (proxy for new sign-ups)
-    complianceStats.weeklyIncrease = Array.from({ length: 8 }, (_, i) => {
-      const weekEnd = new Date(now);
-      weekEnd.setDate(weekEnd.getDate() - 7 * (7 - i));
-      const weekStart = new Date(weekEnd);
-      weekStart.setDate(weekStart.getDate() - 7);
+    // Weekly sign-up increases — starts from launch week (Sun May 10 2026) and grows by one column every Sunday
+    const CHART_START = new Date("2026-05-10T00:00:00"); // Sunday of launch week
+    const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+    const weeksElapsed = Math.floor((now.getTime() - CHART_START.getTime()) / MS_PER_WEEK);
+    const weeksToShow = Math.max(1, weeksElapsed + 1);
+
+    complianceStats.weeklyIncrease = Array.from({ length: weeksToShow }, (_, i) => {
+      const weekStart = new Date(CHART_START.getTime() + i * MS_PER_WEEK);
+      const weekEnd = new Date(weekStart.getTime() + MS_PER_WEEK);
       const inWindow = allAdvisors.filter((a) => a.updatedAt >= weekStart && a.updatedAt < weekEnd);
-      const label = weekEnd.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
+      const label = weekStart.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
       return {
         label,
         auditForm: inWindow.filter((a) => !!a.auditFormUrl).length,
