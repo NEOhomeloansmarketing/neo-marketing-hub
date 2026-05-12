@@ -116,6 +116,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: "General",
     items: [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: IconDashboard },
+      { id: "rocks", label: "Rocks", href: "/rocks", icon: IconRocks },
       { id: "tasks", label: "My Tasks", href: "/tasks", icon: IconTasks },
       { id: "projects", label: "Projects", href: "/projects", icon: IconProjects },
       { id: "calendar", label: "Calendar", href: "/calendar", icon: IconCalendar },
@@ -126,7 +127,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: "meetings", label: "Meetings", href: "/meetings", icon: IconMeetings },
       { id: "actions", label: "Action Items", href: "/actions", icon: IconActionItems },
-      { id: "rocks", label: "Rocks", href: "/rocks", icon: IconRocks },
       { id: "tools", label: "Tools & Logins", href: "/tools", icon: IconTools },
       { id: "advisors", label: "Advisor Compliance", href: "/advisors", icon: IconShield },
     ],
