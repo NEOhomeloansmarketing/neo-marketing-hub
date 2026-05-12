@@ -65,6 +65,11 @@ const IconCampaigns = ({ size = 16 }: { size?: number }) => (
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
   </svg>
 );
+const IconRocks = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
 const IconAnalytics = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
@@ -121,6 +126,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: "meetings", label: "Meetings", href: "/meetings", icon: IconMeetings },
       { id: "actions", label: "Action Items", href: "/actions", icon: IconActionItems },
+      { id: "rocks", label: "Rocks", href: "/rocks", icon: IconRocks },
       { id: "tools", label: "Tools & Logins", href: "/tools", icon: IconTools },
       { id: "advisors", label: "Advisor Compliance", href: "/advisors", icon: IconShield },
     ],

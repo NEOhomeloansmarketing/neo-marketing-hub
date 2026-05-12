@@ -213,6 +213,7 @@ model Team {
   advisors    Advisor[]
   tools       Tool[]
   campaigns   Campaign[]
+  rocks       Rock[]
 }
 
 model TeamMember {
@@ -256,6 +257,7 @@ model User {
   ideasCreated         Idea[]
   ideaVotes            IdeaVote[]
   marketingAssignments MarketingRequest[]
+  rocksOwned           Rock[]            @relation("RockOwner")
 }
 
 model Meeting {
@@ -366,6 +368,7 @@ model Task {
   comments    TaskComment[]
   attachments TaskAttachment[]
   actionItems ActionItem[]
+  rockLinks   RockTask[]
 }
 
 model TaskFollower {
@@ -589,4 +592,51 @@ model GoogleToken {
   scope        String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ── Rocks (EOS 90-day priorities) ─────────────────────────────────────────────
+
+model Rock {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  quarter     Int       // 1-4
+  year        Int
+  status      String    @default("NOT_STARTED") // NOT_STARTED | ON_TRACK | OFF_TRACK | COMPLETE | DROPPED
+  level       String    @default("COMPANY")     // COMPANY | INDIVIDUAL
+  ownerId     String?
+  teamId      String?
+  dueDate     DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  owner      User?       @relation("RockOwner", fields: [ownerId], references: [id])
+  team       Team?       @relation(fields: [teamId], references: [id])
+  milestones Milestone[]
+  rockTasks  RockTask[]
+}
+
+model Milestone {
+  id        String   @id @default(cuid())
+  rockId    String
+  title     String
+  done      Boolean  @default(false)
+  dueDate   DateTime?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rock Rock @relation(fields: [rockId], references: [id], onDelete: Cascade)
+}
+
+model RockTask {
+  rockId  String
+  taskId  String
+  addedAt DateTime @default(now())
+
+  rock Rock @relation(fields: [rockId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([rockId, taskId])
 }
