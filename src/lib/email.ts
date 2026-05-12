@@ -1,15 +1,21 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 const APP_URL = process.env.NEXTAUTH_URL ?? "https://neo-marketing-hub.vercel.app";
-// Uses Resend's shared sending domain — no DNS setup required.
-// Upgrade to a verified custom domain any time by changing EMAIL_FROM.
-const FROM = process.env.EMAIL_FROM ?? "NEO Marketing Hub <onboarding@resend.dev>";
+const GMAIL_USER = process.env.GMAIL_USER;
+const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD;
 
-function getResend() {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return null;
-  return new Resend(key);
+function getTransport() {
+  if (!GMAIL_USER || !GMAIL_PASS) {
+    console.warn("[email] GMAIL_USER or GMAIL_APP_PASSWORD not set — skipping email");
+    return null;
+  }
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: GMAIL_USER, pass: GMAIL_PASS },
+  });
 }
+
+// ─── New Request ────────────────────────────────────────────────────────────
 
 export interface NewRequestEmailPayload {
   to: string;
@@ -22,11 +28,8 @@ export interface NewRequestEmailPayload {
 }
 
 export async function sendNewRequestEmail(payload: NewRequestEmailPayload) {
-  const resend = getResend();
-  if (!resend) {
-    console.warn("[email] RESEND_API_KEY not set — skipping email");
-    return;
-  }
+  const transport = getTransport();
+  if (!transport) return;
 
   const fullLink = `${APP_URL}${payload.link}`;
 
@@ -37,8 +40,6 @@ export async function sendNewRequestEmail(payload: NewRequestEmailPayload) {
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#061320;padding:32px 16px;">
     <tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
-
-        <!-- Header -->
         <tr><td style="background:#0e2b48;border-radius:12px 12px 0 0;padding:24px 28px;border-bottom:1px solid #1d4368;">
           <table width="100%" cellpadding="0" cellspacing="0"><tr>
             <td>
@@ -52,17 +53,9 @@ export async function sendNewRequestEmail(payload: NewRequestEmailPayload) {
             </td>
           </tr></table>
         </td></tr>
-
-        <!-- Body -->
         <tr><td style="background:#0b1f35;padding:28px;border-left:1px solid #1d4368;border-right:1px solid #1d4368;">
-          <p style="margin:0 0 16px;font-size:15px;color:#e2e8f0;line-height:1.5;">
-            Hey <strong>${payload.recipientName}</strong> 👋
-          </p>
-          <p style="margin:0 0 20px;font-size:14px;color:#a8aaab;line-height:1.6;">
-            A new marketing request has come in and been assigned to you.
-          </p>
-
-          <!-- Request card -->
+          <p style="margin:0 0 16px;font-size:15px;color:#e2e8f0;line-height:1.5;">Hey <strong>${payload.recipientName}</strong> 👋</p>
+          <p style="margin:0 0 20px;font-size:14px;color:#a8aaab;line-height:1.6;">A new marketing request has come in and been assigned to you.</p>
           <div style="background:#0e2b48;border:1px solid #1d4368;border-left:3px solid #c084fc;border-radius:8px;padding:16px 18px;margin:0 0 24px;">
             <div style="font-size:15px;font-weight:700;color:#e2e8f0;margin-bottom:8px;">${payload.requestTitle}</div>
             <div style="font-size:12px;color:#858889;margin-bottom:${payload.description ? "10px" : "0"};">
@@ -71,25 +64,18 @@ export async function sendNewRequestEmail(payload: NewRequestEmailPayload) {
             </div>
             ${payload.description ? `<p style="margin:0;font-size:13px;color:#cbd5e1;line-height:1.6;">${payload.description}</p>` : ""}
           </div>
-
-          <!-- CTA -->
           <table cellpadding="0" cellspacing="0"><tr>
             <td style="background:linear-gradient(180deg,#5bcbf5,#3aa6cc);border-radius:8px;">
-              <a href="${fullLink}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:700;color:#061320;text-decoration:none;border-radius:8px;">
-                View Request →
-              </a>
+              <a href="${fullLink}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:700;color:#061320;text-decoration:none;border-radius:8px;">View Request →</a>
             </td>
           </tr></table>
         </td></tr>
-
-        <!-- Footer -->
         <tr><td style="background:#061320;border-radius:0 0 12px 12px;padding:18px 28px;border:1px solid #1d4368;border-top:none;">
           <p style="margin:0;font-size:11px;color:#5d6566;line-height:1.6;">
             You received this because all marketing requests are assigned to you.<br/>
             <a href="${APP_URL}" style="color:#5bcbf5;text-decoration:none;">Open the Hub</a>
           </p>
         </td></tr>
-
       </table>
     </td></tr>
   </table>
@@ -97,8 +83,8 @@ export async function sendNewRequestEmail(payload: NewRequestEmailPayload) {
 </html>`;
 
   try {
-    await resend.emails.send({
-      from: FROM,
+    await transport.sendMail({
+      from: `"NEO Marketing Hub" <${GMAIL_USER}>`,
       to: payload.to,
       subject: `New marketing request: ${payload.requestTitle}`,
       html,
@@ -107,6 +93,8 @@ export async function sendNewRequestEmail(payload: NewRequestEmailPayload) {
     console.error("[email] Failed to send new request email:", err);
   }
 }
+
+// ─── @Mention ────────────────────────────────────────────────────────────────
 
 export interface MentionEmailPayload {
   to: string;
@@ -118,11 +106,8 @@ export interface MentionEmailPayload {
 }
 
 export async function sendMentionEmail(payload: MentionEmailPayload) {
-  const resend = getResend();
-  if (!resend) {
-    console.warn("[email] RESEND_API_KEY not set — skipping email");
-    return;
-  }
+  const transport = getTransport();
+  if (!transport) return;
 
   const fullLink = `${APP_URL}${payload.link}`;
   const preview = payload.commentBody.length > 200
@@ -141,8 +126,6 @@ export async function sendMentionEmail(payload: MentionEmailPayload) {
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#061320;padding:32px 16px;">
     <tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
-
-        <!-- Header -->
         <tr><td style="background:#0e2b48;border-radius:12px 12px 0 0;padding:24px 28px;border-bottom:1px solid #1d4368;">
           <table width="100%" cellpadding="0" cellspacing="0"><tr>
             <td>
@@ -156,39 +139,26 @@ export async function sendMentionEmail(payload: MentionEmailPayload) {
             </td>
           </tr></table>
         </td></tr>
-
-        <!-- Body -->
         <tr><td style="background:#0b1f35;padding:28px;border-left:1px solid #1d4368;border-right:1px solid #1d4368;">
-          <p style="margin:0 0 16px;font-size:15px;color:#e2e8f0;line-height:1.5;">
-            Hey <strong>${payload.recipientName}</strong> 👋
-          </p>
+          <p style="margin:0 0 16px;font-size:15px;color:#e2e8f0;line-height:1.5;">Hey <strong>${payload.recipientName}</strong> 👋</p>
           <p style="margin:0 0 20px;font-size:14px;color:#a8aaab;line-height:1.6;">
-            <strong style="color:#e2e8f0;">${payload.actorName}</strong> mentioned you in a comment on <strong style="color:#e2e8f0;">${payload.entityLabel}</strong>.
+            <strong style="color:#e2e8f0;">${payload.actorName}</strong> mentioned you in <strong style="color:#e2e8f0;">${payload.entityLabel}</strong>.
           </p>
-
-          <!-- Comment bubble -->
           <div style="background:#0e2b48;border:1px solid #1d4368;border-left:3px solid #5bcbf5;border-radius:8px;padding:16px 18px;margin:0 0 24px;">
             <p style="margin:0;font-size:13.5px;color:#cbd5e1;line-height:1.6;">${highlightedBody}</p>
           </div>
-
-          <!-- CTA -->
           <table cellpadding="0" cellspacing="0"><tr>
             <td style="background:linear-gradient(180deg,#5bcbf5,#3aa6cc);border-radius:8px;">
-              <a href="${fullLink}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:700;color:#061320;text-decoration:none;border-radius:8px;">
-                View in NEO Hub →
-              </a>
+              <a href="${fullLink}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:700;color:#061320;text-decoration:none;border-radius:8px;">View in NEO Hub →</a>
             </td>
           </tr></table>
         </td></tr>
-
-        <!-- Footer -->
         <tr><td style="background:#061320;border-radius:0 0 12px 12px;padding:18px 28px;border:1px solid #1d4368;border-top:none;">
           <p style="margin:0;font-size:11px;color:#5d6566;line-height:1.6;">
             You received this because you were @mentioned in NEO Marketing Hub.<br/>
             <a href="${APP_URL}" style="color:#5bcbf5;text-decoration:none;">Open the Hub</a>
           </p>
         </td></tr>
-
       </table>
     </td></tr>
   </table>
@@ -196,8 +166,8 @@ export async function sendMentionEmail(payload: MentionEmailPayload) {
 </html>`;
 
   try {
-    await resend.emails.send({
-      from: FROM,
+    await transport.sendMail({
+      from: `"NEO Marketing Hub" <${GMAIL_USER}>`,
       to: payload.to,
       subject: `${payload.actorName} mentioned you in ${payload.entityLabel}`,
       html,
