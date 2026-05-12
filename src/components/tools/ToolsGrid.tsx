@@ -351,8 +351,37 @@ export function ToolsGrid({ tools: initialTools, categories, openCompose, onComp
 
   const ssoCount = tools.filter((t) => t.credKind === "SSO").length;
 
+  function openJotform(url: string) {
+    window.open(url, "blank", "scrollbars=yes,toolbar=no,width=700,height=500");
+  }
+
   return (
     <div className="space-y-5">
+
+      {/* Quick-access form buttons */}
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() => openJotform("https://form.jotform.com/260205170614041")}
+          className="flex items-center gap-2.5 rounded-xl px-5 py-3 text-[13px] font-semibold transition hover:-translate-y-0.5 hover:shadow-lg"
+          style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#5bcbf5" }}
+        >
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-lg" style={{ background: "#5bcbf522" }}>
+            📝
+          </span>
+          Submit Duda Matrix Blog
+        </button>
+        <button
+          onClick={() => openJotform("https://form.jotform.com/253567442789069")}
+          className="flex items-center gap-2.5 rounded-xl px-5 py-3 text-[13px] font-semibold transition hover:-translate-y-0.5 hover:shadow-lg"
+          style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#a855f7" }}
+        >
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-lg" style={{ background: "#a855f722" }}>
+            🚀
+          </span>
+          MA Marketing Onboarding Form
+        </button>
+      </div>
+
       {/* Category filter + search */}
       <div className="flex flex-wrap items-center gap-2">
         <Chip active={cat === ALL_CATEGORIES} onClick={() => setCat(ALL_CATEGORIES)}>
