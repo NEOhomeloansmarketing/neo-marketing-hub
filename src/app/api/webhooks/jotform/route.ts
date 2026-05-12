@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { sendNewRequestEmail } from "@/lib/email";
+
+const DEFAULT_ASSIGNEE_NAME = "Zeph Davis";
+
+async function getDefaultAssignee() {
+  return db.user.findFirst({
+    where: { name: { contains: DEFAULT_ASSIGNEE_NAME, mode: "insensitive" }, isActive: true },
+    select: { id: true, name: true, email: true },
+  });
+}
 
 // JotForm validates the webhook URL with a GET request first
 export async function GET() {
@@ -115,7 +125,10 @@ export async function POST(request: Request) {
       }
     }
 
-    await db.marketingRequest.create({
+    // Auto-assign to Zeph Davis
+    const assignee = await getDefaultAssignee();
+
+    const created = await db.marketingRequest.create({
       data: {
         title,
         description: description ?? null,
@@ -125,6 +138,7 @@ export async function POST(request: Request) {
         advisorName: advisorName ?? null,
         advisorEmail: advisorEmail ?? null,
         advisorNmls: advisorNmls ?? null,
+        assigneeId: assignee?.id ?? null,
         dueDate: dueDate && !isNaN(dueDate.getTime()) ? dueDate : null,
         submissionId: submissionId ?? null,
         jotformFormId: topLevel.formID ?? null,
@@ -132,6 +146,19 @@ export async function POST(request: Request) {
         attachmentUrls,
       },
     });
+
+    // Email Zeph
+    if (assignee) {
+      sendNewRequestEmail({
+        to: assignee.email,
+        recipientName: assignee.name,
+        requestTitle: title,
+        requestType: rawType ?? "Other",
+        advisorName: advisorName ?? null,
+        description: description ?? null,
+        link: `/requests/${created.id}`,
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
