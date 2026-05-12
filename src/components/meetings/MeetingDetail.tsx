@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import { TranscribeModal } from "./TranscribeModal";
-import { MeetingRecorder } from "./MeetingRecorder";
 
 interface Person {
   id: string;
@@ -310,17 +309,6 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
 
   // Transcribe modal
   const [showTranscribe, setShowTranscribe] = useState(false);
-  const [recordedTranscript, setRecordedTranscript] = useState<string | undefined>(undefined);
-
-  const handleRecordingDone = (text: string) => {
-    setRecordedTranscript(text);
-    setShowTranscribe(true);
-  };
-
-  const handleTranscribeClose = () => {
-    setShowTranscribe(false);
-    setRecordedTranscript(undefined);
-  };
 
   // Extract AI
   const [extracting, setExtracting] = useState(false);
@@ -413,18 +401,15 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
             </svg>
           </button>
 
-          {/* Live recorder — free browser speech recognition */}
-          <MeetingRecorder onTranscriptReady={handleRecordingDone} />
-
-          {/* Manual paste / upload fallback */}
+          {/* Analyze transcript button */}
           <button
-            onClick={() => { setRecordedTranscript(undefined); setShowTranscribe(true); }}
+            onClick={() => setShowTranscribe(true)}
             className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition hover:brightness-110"
             style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)", color: "#c084fc" }}
-            title="Paste or upload a transcript"
+            title="Paste Teams transcript and extract action items with AI"
           >
-            <span>📋</span>
-            <span className="hidden sm:inline">Paste Transcript</span>
+            <span>🎙</span>
+            <span className="hidden sm:inline">AI Transcript</span>
           </button>
 
           {status === "UPCOMING" && (
@@ -827,9 +812,8 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
       <TranscribeModal
         meetingId={meeting.id}
         attendees={meeting.attendees.map((a) => ({ id: a.id, name: a.name, color: a.color, initials: a.initials }))}
-        onClose={handleTranscribeClose}
+        onClose={() => setShowTranscribe(false)}
         onActionsCreated={(items) => setActionItems((prev) => [...prev, ...items])}
-        initialTranscript={recordedTranscript}
       />
     )}
     </>

@@ -32,8 +32,6 @@ interface TranscribeModalProps {
   attendees: Person[];
   onClose: () => void;
   onActionsCreated: (items: { id: string; title: string; assignee?: Person | null; dueDate?: string | null; status: string; source: string; taskId?: string | null }[]) => void;
-  /** Pre-filled transcript (from live recording) — skips the input step and auto-analyzes */
-  initialTranscript?: string;
 }
 
 function parseVtt(vttText: string): string {
@@ -70,17 +68,16 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
 };
 
-export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreated, initialTranscript }: TranscribeModalProps) {
+export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreated }: TranscribeModalProps) {
   const [step, setStep] = useState<"input" | "analyzing" | "review" | "creating">("input");
   const [inputMode, setInputMode] = useState<"paste" | "upload">("paste");
-  const [transcript, setTranscript] = useState(initialTranscript ?? "");
+  const [transcript, setTranscript] = useState("");
   const [analyzeError, setAnalyzeError] = useState("");
   const [summary, setSummary] = useState("");
   const [suggestions, setSuggestions] = useState<SuggestedAction[]>([]);
   const [createError, setCreateError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
-  const autoAnalyzedRef = useRef(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -88,14 +85,6 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Auto-analyze when opened with a pre-filled transcript (from live recording)
-  useEffect(() => {
-    if (initialTranscript && !autoAnalyzedRef.current && initialTranscript.trim().length >= 20) {
-      autoAnalyzedRef.current = true;
-      handleAnalyze();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
