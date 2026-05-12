@@ -4,6 +4,7 @@ import { useState } from "react";
 import { RequestsAnalytics } from "./RequestsAnalytics";
 import { ComplianceAnalytics } from "./ComplianceAnalytics";
 import { SearchConsoleAnalytics } from "./SearchConsoleAnalytics";
+import { DudaAnalytics } from "./DudaAnalytics";
 
 type RequestStats = React.ComponentProps<typeof RequestsAnalytics>["stats"];
 type ComplianceStats = React.ComponentProps<typeof ComplianceAnalytics>["stats"];
@@ -12,6 +13,7 @@ const TABS = [
   { id: "requests", label: "Marketing Requests" },
   { id: "compliance", label: "Advisor Compliance" },
   { id: "search", label: "Search Console" },
+  { id: "matrix", label: "Matrix Sites" },
 ];
 
 export function AnalyticsTabs({
@@ -46,6 +48,7 @@ export function AnalyticsTabs({
       {activeTab === "requests" && <RequestsAnalytics stats={requestStats} />}
       {activeTab === "compliance" && <ComplianceAnalytics stats={complianceStats} />}
       {activeTab === "search" && <SearchConsoleAnalytics />}
+      {activeTab === "matrix" && <DudaAnalytics />}
     </div>
   );
 }
