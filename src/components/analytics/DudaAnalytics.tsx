@@ -76,8 +76,8 @@ function buildCsv(data: AnalyticsData, reportLabel: string): string {
   rows.push(`Period:,${csvEscape(fmtDate(dateRange.start))} – ${csvEscape(fmtDate(dateRange.end))}`);
   rows.push(`Comparison:,${csvEscape(fmtDate(dateRange.prevStart))} – ${csvEscape(fmtDate(dateRange.prevEnd))}`);
   rows.push(`Generated:,${csvEscape(now)}`);
-  rows.push(`Total Sites:,103`);
-  rows.push(`Active Sites (any visitors):,${sites.filter(s => s.visitors > 0).length}`);
+  rows.push(`Total Sites:,${sites.length}`);
+  rows.push(`Sites with Traffic:,${sites.filter(s => s.visitors > 0).length}`);
   rows.push("");
 
   // Network totals summary
@@ -148,6 +148,241 @@ function downloadCsv(content: string, filename: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ── Manage Sites Modal ────────────────────────────────────────────────────────
+
+interface StoredSite { id: string; siteId: string; name: string; url: string; isManual: boolean; }
+
+function ManageSitesModal({ onClose, onSitesChanged }: { onClose: () => void; onSitesChanged: (count: number) => void }) {
+  const [sites, setSites] = useState<StoredSite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ added: number; updated: number; total: number; publishedFromApi: number } | null>(null);
+  const [syncError, setSyncError] = useState("");
+  const [newSiteId, setNewSiteId] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+
+  useEffect(() => { loadSites(); }, []);
+
+  async function loadSites() {
+    setLoading(true);
+    const res = await fetch("/api/duda/sites");
+    const json = await res.json();
+    setSites(json.sites ?? []);
+    setLoading(false);
+  }
+
+  async function sync() {
+    setSyncing(true); setSyncError(""); setSyncResult(null);
+    try {
+      const res = await fetch("/api/duda/sites/sync", { method: "POST" });
+      const json = await res.json();
+      if (json.error) { setSyncError(json.error); }
+      else {
+        setSyncResult({ added: json.added, updated: json.updated, total: json.total, publishedFromApi: json.publishedFromApi });
+        setSites(json.sites ?? []);
+        onSitesChanged(json.total);
+      }
+    } catch (e) { setSyncError(String(e)); }
+    setSyncing(false);
+  }
+
+  async function addSite() {
+    if (!newSiteId.trim() || !newName.trim()) return;
+    setAdding(true);
+    const res = await fetch("/api/duda/sites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ siteId: newSiteId.trim(), name: newName.trim(), url: newUrl.trim() }),
+    });
+    const json = await res.json();
+    if (json.site) {
+      setSites(prev => {
+        const exists = prev.find(s => s.id === json.site.id);
+        return exists ? prev.map(s => s.id === json.site.id ? json.site : s) : [...prev, json.site];
+      });
+      onSitesChanged(sites.length + 1);
+      setNewSiteId(""); setNewName(""); setNewUrl("");
+    }
+    setAdding(false);
+  }
+
+  async function removeSite(site: StoredSite) {
+    if (!confirm(`Remove "${site.name}" from the site list?`)) return;
+    await fetch(`/api/duda/sites/${site.id}`, { method: "DELETE" });
+    setSites(prev => prev.filter(s => s.id !== site.id));
+    onSitesChanged(sites.length - 1);
+  }
+
+  async function saveEdit(site: StoredSite) {
+    const res = await fetch(`/api/duda/sites/${site.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editName, url: editUrl }),
+    });
+    const json = await res.json();
+    if (json.site) setSites(prev => prev.map(s => s.id === json.site.id ? json.site : s));
+    setEditingId(null);
+  }
+
+  const filtered = sites.filter(s =>
+    !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.siteId.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="flex h-[90vh] w-full max-w-2xl flex-col rounded-2xl" style={{ background: "#07192e", border: "1px solid #1d4368" }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: "1px solid #1d4368" }}>
+          <div>
+            <div className="text-[14px] font-bold text-slate-100">Manage Matrix Sites</div>
+            <div className="text-[11px] mt-0.5" style={{ color: "#5d6566" }}>{sites.length} sites in list</div>
+          </div>
+          <button onClick={onClose} className="text-[22px] leading-none transition hover:opacity-60" style={{ color: "#858889" }}>×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          {/* Auto-sync section */}
+          <div className="rounded-xl p-5 space-y-3" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[13px] font-semibold text-slate-100">Sync from Duda API</div>
+                <div className="text-[11px] mt-0.5" style={{ color: "#858889" }}>
+                  Automatically discovers all published sites in your Duda account and adds any new ones.
+                  Won&apos;t overwrite names you&apos;ve manually edited.
+                </div>
+              </div>
+              <button onClick={sync} disabled={syncing}
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-semibold transition disabled:opacity-60 shrink-0"
+                style={{ background: "#5bcbf5", color: "#061320" }}>
+                {syncing
+                  ? <><div className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" /> Syncing…</>
+                  : <>↻ Sync Now</>}
+              </button>
+            </div>
+            {syncResult && (
+              <div className="rounded-lg px-4 py-3 text-[12px]" style={{ background: "#22c55e22", border: "1px solid #22c55e44" }}>
+                <span style={{ color: "#22c55e" }}>✓ Sync complete — </span>
+                <span style={{ color: "#a8aaab" }}>
+                  {syncResult.publishedFromApi} published sites found · {syncResult.added} new added · {syncResult.updated} URLs updated · {syncResult.total} total in list
+                </span>
+              </div>
+            )}
+            {syncError && (
+              <div className="rounded-lg px-4 py-3 text-[12px]" style={{ background: "#f43f5e22", border: "1px solid #f43f5e44", color: "#f43f5e" }}>
+                Error: {syncError}
+              </div>
+            )}
+          </div>
+
+          {/* Manual add section */}
+          <div className="rounded-xl p-5 space-y-3" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+            <div className="text-[13px] font-semibold text-slate-100">Add Site Manually</div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Duda Site ID *</label>
+                <input value={newSiteId} onChange={e => setNewSiteId(e.target.value)}
+                  placeholder="e.g. 1e6fa1d5"
+                  className="w-full rounded-lg px-3 py-2 text-[12px] text-slate-100 outline-none font-mono"
+                  style={{ background: "#0a2540", border: "1px solid #1d4368" }} />
+              </div>
+              <div>
+                <label className="block mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Display Name *</label>
+                <input value={newName} onChange={e => setNewName(e.target.value)}
+                  placeholder="e.g. John Smith"
+                  className="w-full rounded-lg px-3 py-2 text-[12px] text-slate-100 outline-none"
+                  style={{ background: "#0a2540", border: "1px solid #1d4368" }} />
+              </div>
+              <div>
+                <label className="block mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Website URL</label>
+                <input value={newUrl} onChange={e => setNewUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="w-full rounded-lg px-3 py-2 text-[12px] text-slate-100 outline-none"
+                  style={{ background: "#0a2540", border: "1px solid #1d4368" }} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={addSite} disabled={!newSiteId.trim() || !newName.trim() || adding}
+                className="rounded-lg px-4 py-2 text-[12px] font-semibold transition disabled:opacity-40"
+                style={{ background: "#5bcbf5", color: "#061320" }}>
+                {adding ? "Adding…" : "+ Add Site"}
+              </button>
+              <span className="text-[10px]" style={{ color: "#5d6566" }}>
+                Find the Site ID in your Duda dashboard URL or via Settings → General
+              </span>
+            </div>
+          </div>
+
+          {/* Site list */}
+          <div className="rounded-xl overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+            <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: "1px solid #1d4368" }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider flex-1" style={{ color: "#858889" }}>
+                {filtered.length} Sites
+              </div>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search sites…"
+                className="rounded-md px-3 py-1.5 text-[11px] text-slate-100 outline-none"
+                style={{ background: "#0a2540", border: "1px solid #1d4368", width: 180 }} />
+            </div>
+            {loading ? (
+              <div className="py-8 text-center text-[12px]" style={{ color: "#5d6566" }}>Loading…</div>
+            ) : (
+              <div className="max-h-72 overflow-y-auto">
+                {filtered.map((s, i) => (
+                  <div key={s.id}
+                    className="flex items-center gap-3 px-4 py-3 group"
+                    style={{ borderBottom: i === filtered.length - 1 ? "none" : "1px solid #0a2540" }}>
+                    {editingId === s.id ? (
+                      <>
+                        <input value={editName} onChange={e => setEditName(e.target.value)}
+                          className="flex-1 rounded px-2 py-1 text-[12px] text-slate-100 outline-none"
+                          style={{ background: "#0a2540", border: "1px solid #1d4368" }} />
+                        <input value={editUrl} onChange={e => setEditUrl(e.target.value)}
+                          placeholder="URL"
+                          className="w-40 rounded px-2 py-1 text-[12px] text-slate-100 outline-none"
+                          style={{ background: "#0a2540", border: "1px solid #1d4368" }} />
+                        <button onClick={() => saveEdit(s)} className="text-[11px] font-semibold" style={{ color: "#22c55e" }}>Save</button>
+                        <button onClick={() => setEditingId(null)} className="text-[11px]" style={{ color: "#858889" }}>Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[12.5px] font-medium text-slate-100 truncate">{s.name}</span>
+                            {s.isManual && (
+                              <span className="text-[9px] rounded-full px-1.5 py-[1px]" style={{ background: "#5bcbf522", color: "#5bcbf5" }}>manual</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] font-mono mt-0.5" style={{ color: "#5d6566" }}>{s.siteId}{s.url && <> · <span style={{ color: "#5d6566" }}>{s.url.replace("https://", "")}</span></>}</div>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition shrink-0">
+                          <button onClick={() => { setEditingId(s.id); setEditName(s.name); setEditUrl(s.url); }}
+                            className="text-[11px] transition hover:opacity-70" style={{ color: "#5bcbf5" }}>Edit</button>
+                          <button onClick={() => removeSite(s)}
+                            className="text-[11px] transition hover:opacity-70" style={{ color: "#f43f5e" }}>Remove</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Monthly Report Modal ─────────────────────────────────────────────────────
@@ -346,6 +581,8 @@ export function DudaAnalytics() {
   const [selectedSite, setSelectedSite] = useState<{ siteId: string; name: string; url: string } | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showMonthlyModal, setShowMonthlyModal] = useState(false);
+  const [showManageSites, setShowManageSites] = useState(false);
+  const [totalSites, setTotalSites] = useState<number | null>(null);
 
   useEffect(() => { fetchData(30); }, []);
   // Close export menu on outside click
@@ -396,7 +633,7 @@ export function DudaAnalytics() {
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center gap-3 py-20">
-      <div className="text-[13px]" style={{ color: "#5d6566" }}>Fetching stats for all 103 Matrix sites…</div>
+      <div className="text-[13px]" style={{ color: "#5d6566" }}>Fetching stats for all Matrix sites…</div>
       <div className="text-[11px]" style={{ color: "#5d6566" }}>This may take 15–20 seconds</div>
     </div>
   );
@@ -450,14 +687,31 @@ export function DudaAnalytics() {
         />
       )}
       {showMonthlyModal && <MonthlyReportModal onClose={() => setShowMonthlyModal(false)} />}
+      {showManageSites && (
+        <ManageSitesModal
+          onClose={() => setShowManageSites(false)}
+          onSitesChanged={(count) => setTotalSites(count)}
+        />
+      )}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-[13px] font-semibold text-slate-100">
-          103 Matrix Sites
-          <span className="ml-2 text-[11px] font-normal" style={{ color: "#5d6566" }}>
-            {activeSites} with traffic in period
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="text-[13px] font-semibold text-slate-100">
+            {totalSites ?? sites.length} Matrix Sites
+            <span className="ml-2 text-[11px] font-normal" style={{ color: "#5d6566" }}>
+              {activeSites} with traffic in period
+            </span>
+          </div>
+          <button
+            onClick={() => setShowManageSites(true)}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold transition hover:opacity-80"
+            style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#858889" }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+            </svg>
+            Manage Sites
+          </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Date presets */}
@@ -537,7 +791,7 @@ export function DudaAnalytics() {
         <div className="rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
           <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Sites with Traffic</div>
           <div className="mt-1 text-[26px] font-bold tabular-nums leading-none" style={{ color: "#22c55e" }}>{activeSites}</div>
-          <div className="mt-1.5 text-[11px]" style={{ color: "#5d6566" }}>of 103 published sites</div>
+          <div className="mt-1.5 text-[11px]" style={{ color: "#5d6566" }}>of {totalSites ?? sites.length} published sites</div>
         </div>
       </div>
 

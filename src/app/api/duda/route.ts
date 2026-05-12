@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { DUDA_SITES } from "@/lib/duda-sites";
+import { db } from "@/lib/db";
 
 const BASE = "https://api.duda.co/api";
 
@@ -58,6 +59,12 @@ export async function GET(request: Request) {
   const end = endParam ?? toYMD(new Date());
   const start = startParam ?? (() => { const d = new Date(); d.setDate(d.getDate() - 30); return toYMD(d); })();
 
+  // Prefer DB-managed site list; fall back to hardcoded if DB is empty
+  const dbSites = await db.dudaSite.findMany({ orderBy: { name: "asc" } }).catch(() => []);
+  const SITES = dbSites.length > 0
+    ? dbSites.map((s) => ({ siteId: s.siteId, name: s.name, url: s.url }))
+    : DUDA_SITES;
+
   try {
     // Site-weekly mode: fetch 12 weeks of weekly data for a single site
     if (mode === "site-weekly" && siteIdParam) {
@@ -87,7 +94,7 @@ export async function GET(request: Request) {
       }
       // Also fetch the current period totals
       const periodStats = await fetchAnalytics(siteIdParam, start, end, authHeader);
-      const site = DUDA_SITES.find((s) => s.siteId === siteIdParam);
+      const site = SITES.find((s) => s.siteId === siteIdParam);
       return NextResponse.json({
         siteId: siteIdParam,
         name: site?.name ?? siteIdParam,
@@ -101,7 +108,7 @@ export async function GET(request: Request) {
 
     if (mode === "details") {
       // Fetch site details for all sites (batched 10 at a time)
-      const details = await batch(DUDA_SITES, 10, async (site) => {
+      const details = await batch(SITES, 10, async (site) => {
         const d = await fetchSiteDetails(site.siteId, authHeader);
         return {
           siteId: site.siteId,
@@ -129,7 +136,7 @@ export async function GET(request: Request) {
     }
 
     // Analytics mode — fetch visitor/visit/pageview data for all sites
-    const analytics = await batch(DUDA_SITES, 10, async (site) => {
+    const analytics = await batch(SITES, 10, async (site) => {
       const stats = await fetchAnalytics(site.siteId, start, end, authHeader);
       return {
         siteId: site.siteId,
@@ -148,7 +155,7 @@ export async function GET(request: Request) {
     const prevEndStr = toYMD(prevEnd);
     const prevStartStr = toYMD(prevStart);
 
-    const prevAnalytics = await batch(DUDA_SITES, 10, async (site) => {
+    const prevAnalytics = await batch(SITES, 10, async (site) => {
       const stats = await fetchAnalytics(site.siteId, prevStartStr, prevEndStr, authHeader);
       return {
         siteId: site.siteId,

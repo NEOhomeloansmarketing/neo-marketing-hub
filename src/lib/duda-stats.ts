@@ -1,4 +1,5 @@
 import { DUDA_SITES } from "./duda-sites";
+import { db } from "./db";
 
 const BASE = "https://api.duda.co/api";
 
@@ -26,6 +27,11 @@ export async function getDudaDashboardStats() {
   const authHeader = auth();
   if (!authHeader) return null;
 
+  const dbSites = await db.dudaSite.findMany().catch(() => []);
+  const SITES = dbSites.length > 0
+    ? dbSites.map((s) => ({ siteId: s.siteId, name: s.name, url: s.url }))
+    : DUDA_SITES;
+
   const now = new Date();
   const end = toYMD(now);
   const start30 = toYMD(new Date(now.getTime() - 30 * 86400000));
@@ -41,8 +47,8 @@ export async function getDudaDashboardStats() {
     let prevVisitors30 = 0;
     let activeSites = 0;
 
-    for (let i = 0; i < DUDA_SITES.length; i += chunkSize) {
-      const chunk = DUDA_SITES.slice(i, i + chunkSize);
+    for (let i = 0; i < SITES.length; i += chunkSize) {
+      const chunk = SITES.slice(i, i + chunkSize);
       const results = await Promise.all(
         chunk.map((s) => Promise.all([
           fetchOne(s.siteId, start30, end, authHeader),
@@ -67,7 +73,7 @@ export async function getDudaDashboardStats() {
       visitors7,
       prevVisitors30,
       activeSites,
-      totalSites: DUDA_SITES.length,
+      totalSites: SITES.length,
       visitorsDelta: prevVisitors30 > 0 ? Math.round(((visitors30 - prevVisitors30) / prevVisitors30) * 100) : null,
     };
   } catch { return null; }

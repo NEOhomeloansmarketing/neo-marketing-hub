@@ -594,6 +594,18 @@ model GoogleToken {
   updatedAt    DateTime @updatedAt
 }
 
+// ── Duda Sites (managed site list) ────────────────────────────────────────────
+
+model DudaSite {
+  id        String   @id @default(cuid())
+  siteId    String   @unique   // Duda's internal site_name / ID
+  name      String
+  url       String   @default("")
+  isManual  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ── Rocks (EOS 90-day priorities) ─────────────────────────────────────────────
 
 model Rock {
