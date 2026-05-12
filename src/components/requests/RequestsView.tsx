@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
+import { CommentSection } from "@/components/comments/CommentSection";
 
 type RequestStatus = "NEW" | "IN_REVIEW" | "IN_PRODUCTION" | "READY_FOR_REVIEW" | "DELIVERED" | "ARCHIVED";
 type Priority = "LOW" | "MEDIUM" | "HIGH";
@@ -372,6 +373,11 @@ function RequestDetailPanel({
               </div>
             </div>
           )}
+
+          {/* Comments */}
+          <div className="rounded-xl p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+            <CommentSection entityType="requestId" entityId={req.id} />
+          </div>
         </div>
 
         {/* Footer */}
