@@ -8,7 +8,8 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const unreadOnly = searchParams.get("unread") === "true";
+  // Default to unread only; pass ?all=true to get everything
+  const showAll = searchParams.get("all") === "true";
 
   try {
     const dbUser = await getOrCreateDbUser(user);
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
     const notifications = await db.notification.findMany({
       where: {
         userId: dbUser.id,
-        ...(unreadOnly ? { read: false } : {}),
+        ...(showAll ? {} : { read: false }),
       },
       include: {
         actor: { select: { id: true, name: true, color: true, initials: true } },

@@ -77,12 +77,12 @@ export function NotificationBell() {
 
   const markAllRead = async () => {
     await fetch("/api/notifications", { method: "PATCH" });
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setNotifications([]);
   };
 
-  const markRead = async (id: string) => {
+  const dismiss = async (id: string) => {
     await fetch(`/api/notifications/${id}`, { method: "PATCH" });
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   return (
@@ -156,7 +156,7 @@ export function NotificationBell() {
                   <div
                     className="flex gap-3 px-4 py-3 transition hover:bg-white/[0.03] cursor-pointer"
                     style={{ borderBottom: "1px solid #0e2340", background: n.read ? "transparent" : "rgba(91,203,245,0.04)" }}
-                    onClick={() => markRead(n.id)}
+                    onClick={() => dismiss(n.id)}
                   >
                     {/* Unread dot */}
                     <div className="flex flex-col items-center gap-1 shrink-0 pt-1">
@@ -183,7 +183,7 @@ export function NotificationBell() {
                 );
 
                 return n.link ? (
-                  <Link key={n.id} href={n.link} onClick={() => { markRead(n.id); setOpen(false); }}>
+                  <Link key={n.id} href={n.link} onClick={() => { dismiss(n.id); setOpen(false); }}>
                     {content}
                   </Link>
                 ) : (
