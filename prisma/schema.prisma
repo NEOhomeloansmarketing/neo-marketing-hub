@@ -580,3 +580,13 @@ model IdeaVote {
 
   @@id([ideaId, userId])
 }
+
+model GoogleToken {
+  id           String   @id @default(cuid())
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scope        String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
