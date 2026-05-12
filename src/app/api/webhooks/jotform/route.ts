@@ -156,7 +156,7 @@ export async function POST(request: Request) {
         requestType: rawType ?? "Other",
         advisorName: advisorName ?? null,
         description: description ?? null,
-        link: `/requests/${created.id}`,
+        link: `/requests`,
       });
     }
 

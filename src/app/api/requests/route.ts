@@ -70,7 +70,7 @@ export async function POST(request: Request) {
         requestType: requestType ?? "Other",
         advisorName: advisorName ?? null,
         description: description ?? null,
-        link: `/requests/${req.id}`,
+        link: `/requests`,
       });
     }
 

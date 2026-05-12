@@ -35,12 +35,13 @@ function entityLink(body: {
   rockId?: string | null;
   requestId?: string | null;
 }): string {
+  // Only meetings have a dedicated detail page; everything else is a drawer on the list page
   if (body.meetingId) return `/meetings/${body.meetingId}`;
-  if (body.requestId) return `/requests/${body.requestId}`;
+  if (body.requestId) return `/requests`;
   if (body.taskId) return `/tasks`;
   if (body.rockId) return `/rocks`;
   if (body.campaignId) return `/campaigns`;
-  return "/";
+  return "/dashboard";
 }
 
 export async function GET(req: Request) {
