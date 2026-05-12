@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatCard } from "@/components/ui/StatCard";
+import { CommentSection } from "@/components/comments/CommentSection";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 interface Follower {
@@ -583,6 +584,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
         <TaskDetailDrawer
           task={openTask}
           teamMembers={teamMembers}
+          currentUserId={currentUserId}
           onClose={() => setOpenTask(null)}
           onToggle={toggle}
           onUpdate={(updated) => setTasks((ts) => ts.map((t) => t.id === updated.id ? updated : t))}
@@ -705,6 +707,7 @@ interface TaskComment {
 function TaskDetailDrawer({
   task,
   teamMembers,
+  currentUserId,
   onClose,
   onToggle,
   onUpdate,
@@ -712,6 +715,7 @@ function TaskDetailDrawer({
 }: {
   task: Task;
   teamMembers: TasksViewProps["teamMembers"];
+  currentUserId?: string;
   onClose: () => void;
   onToggle: (id: string) => void;
   onUpdate: (t: Task) => void;
@@ -1024,64 +1028,7 @@ function TaskDetailDrawer({
           </div>
 
           {/* Comments */}
-          <div>
-            <div className="mb-3 flex items-center gap-2">
-              <div className="text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Comments</div>
-              {comments.length > 0 && (
-                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "rgba(91,203,245,0.15)", color: "#5bcbf5" }}>
-                  {comments.length}
-                </span>
-              )}
-            </div>
-
-            {commentsLoading ? (
-              <div className="text-[12px]" style={{ color: "#5d6566" }}>Loading…</div>
-            ) : comments.length === 0 ? (
-              <div className="rounded-lg py-4 text-center text-[12px]" style={{ border: "1px dashed #1d4368", color: "#5d6566" }}>
-                No comments yet — be the first to add one
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {comments.map((c) => (
-                  <div key={c.id} className="flex gap-3">
-                    <Avatar name={c.author.name} color={c.author.color} initials={c.author.initials} size={28} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-[12px] font-semibold" style={{ color: "#e2e8f0" }}>{c.author.name}</span>
-                        <span className="text-[10.5px]" style={{ color: "#5d6566" }}>
-                          {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <div className="rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed whitespace-pre-wrap" style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }}>
-                        {c.body}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* New comment input */}
-            <div className="mt-3 flex gap-2">
-              <textarea
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handlePostComment(); }}
-                placeholder="Write a comment… (⌘↵ to post)"
-                rows={2}
-                className="flex-1 resize-none rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed outline-none placeholder:text-slate-600"
-                style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#cbd5e1" }}
-              />
-              <button
-                onClick={handlePostComment}
-                disabled={postingComment || !commentDraft.trim()}
-                className="self-end rounded-lg px-3 py-2.5 text-[12px] font-bold text-white disabled:opacity-40 transition"
-                style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", minWidth: "60px" }}
-              >
-                {postingComment ? "…" : "Post"}
-              </button>
-            </div>
-          </div>
+          <CommentSection entityType="taskId" entityId={task.id} currentUserId={currentUserId} />
         </div>
 
         {/* Footer */}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import { TranscribeModal } from "./TranscribeModal";
+import { CommentSection } from "@/components/comments/CommentSection";
 
 interface Person {
   id: string;
@@ -801,6 +802,16 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+
+          {/* Comments */}
+          <div
+            className="flex flex-col rounded-xl overflow-hidden flex-shrink-0"
+            style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
+          >
+            <div className="p-4">
+              <CommentSection entityType="meetingId" entityId={meeting.id} />
             </div>
           </div>
         </div>

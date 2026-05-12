@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase-browser";
 import { useState } from "react";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 interface NavItem {
   id: string;
@@ -368,6 +369,12 @@ export function Sidebar({ user, teams = [], activeTeamId, isAdmin = false }: Sid
           </div>
         ))}
       </nav>
+
+      {/* Notification bell */}
+      <div className="mx-3 mb-2 shrink-0 flex items-center gap-2">
+        <NotificationBell />
+        <span className="text-[11px] font-medium" style={{ color: "#858889" }}>Notifications</span>
+      </div>
 
       {/* User profile */}
       <div className="relative mx-3 mb-3 shrink-0">

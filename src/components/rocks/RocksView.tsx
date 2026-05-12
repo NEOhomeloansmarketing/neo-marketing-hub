@@ -1,4 +1,5 @@
 "use client";
+import { CommentSection } from "@/components/comments/CommentSection";
 
 import { useEffect, useState, useCallback } from "react";
 
@@ -446,6 +447,11 @@ function RockDetail({
                 style={{ background: "#14375a", border: "1px solid #1d4368", color: "#5bcbf5" }}>
                 {savingNotes ? "Saving…" : "Save Notes"}
               </button>
+            </div>
+
+            {/* Comments */}
+            <div className="rounded-xl p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+              <CommentSection entityType="rockId" entityId={rock.id} />
             </div>
           </div>
         </div>

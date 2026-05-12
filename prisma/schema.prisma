@@ -86,7 +86,8 @@ model Campaign {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  team Team? @relation(fields: [teamId], references: [id])
+  team     Team?     @relation(fields: [teamId], references: [id])
+  comments Comment[]
 }
 
 enum ActionStatus {
@@ -193,7 +194,8 @@ model MarketingRequest {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
-  assignee User? @relation(fields: [assigneeId], references: [id])
+  assignee User?    @relation(fields: [assigneeId], references: [id])
+  comments Comment[]
 }
 
 model Team {
@@ -258,6 +260,9 @@ model User {
   ideaVotes            IdeaVote[]
   marketingAssignments MarketingRequest[]
   rocksOwned           Rock[]            @relation("RockOwner")
+  comments             Comment[]         @relation("CommentAuthor")
+  notifications        Notification[]    @relation("NotifReceiver")
+  notifsSent           Notification[]    @relation("NotifActor")
 }
 
 model Meeting {
@@ -281,6 +286,7 @@ model Meeting {
   sections     MeetingSection[]
   decisions    MeetingDecision[]
   actionItems  ActionItem[]
+  comments     Comment[]
 }
 
 model MeetingAttendee {
@@ -369,6 +375,7 @@ model Task {
   attachments TaskAttachment[]
   actionItems ActionItem[]
   rockLinks   RockTask[]
+  thread      Comment[]  @relation("TaskThread")
 }
 
 model TaskFollower {
@@ -627,6 +634,7 @@ model Rock {
   team       Team?       @relation(fields: [teamId], references: [id])
   milestones Milestone[]
   rockTasks  RockTask[]
+  comments   Comment[]
 }
 
 model Milestone {
@@ -651,4 +659,49 @@ model RockTask {
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@id([rockId, taskId])
+}
+
+// ── Comments (unified across all entity types) ────────────────────────────────
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  authorId  String
+
+  // Exactly one of these will be set
+  taskId    String?
+  campaignId String?
+  meetingId  String?
+  rockId     String?
+  requestId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author   User              @relation("CommentAuthor", fields: [authorId], references: [id])
+  task     Task?             @relation("TaskThread", fields: [taskId], references: [id], onDelete: Cascade)
+  campaign Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  meeting  Meeting?          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  rock     Rock?             @relation(fields: [rockId], references: [id], onDelete: Cascade)
+  request  MarketingRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  notifications Notification[]
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  actorId   String?
+  type      String   @default("MENTION")
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  commentId String?
+  createdAt DateTime @default(now())
+
+  user    User     @relation("NotifReceiver", fields: [userId], references: [id], onDelete: Cascade)
+  actor   User?    @relation("NotifActor", fields: [actorId], references: [id])
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
 }
