@@ -119,7 +119,6 @@ export async function POST(req: Request) {
 
     await Promise.all(
       mentionedUsers
-        .filter((u) => u.id !== dbUser.id) // don't notify yourself
         .map(async (mentionedUser) => {
           // In-app notification
           await db.notification.create({
