@@ -106,14 +106,14 @@ function buildCsv(data: AnalyticsData, reportLabel: string): string {
     "Visits Change %",
     "Page Views Change %",
     "Views / Visit",
-    "Active (has traffic)",
+    "Had Traffic This Period",
   ];
   rows.push(cols.map(csvEscape).join(","));
 
   const sorted = [...sites].sort((a, b) => b.visitors - a.visitors);
   sorted.forEach((s, i) => {
     const viewsPerVisit = s.visits > 0 ? (s.pageViews / s.visits).toFixed(2) : "0.00";
-    const active = s.visitors > 0 ? "Yes" : "No";
+    const hadTraffic = s.visitors > 0 ? "Yes" : "No";
     rows.push([
       i + 1,
       s.name,
@@ -128,7 +128,7 @@ function buildCsv(data: AnalyticsData, reportLabel: string): string {
       pctStr(s.visits, s.prevVisits),
       pctStr(s.pageViews, s.prevPageViews),
       viewsPerVisit,
-      active,
+      hadTraffic,
     ].map(csvEscape).join(","));
   });
 
@@ -249,7 +249,7 @@ function MonthlyReportModal({ onClose }: { onClose: () => void }) {
               "Period vs. previous month comparison",
               "Visitor / visits / page views change %",
               "Views per visit ratio",
-              "Active site flag (has traffic)",
+              "Had traffic this period (Yes/No)",
               "Direct URL for each site",
             ].map(item => (
               <div key={item} className="flex items-center gap-2 text-[11.5px]" style={{ color: "#a8aaab" }}>
@@ -535,9 +535,9 @@ export function DudaAnalytics() {
         <StatCard label="Total Visits" value={totals.visits} prev={totals.prevVisits} color="#6366f1" />
         <StatCard label="Page Views" value={totals.pageViews} prev={totals.prevPageViews} color="#a855f7" />
         <div className="rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
-          <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Active Sites</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Sites with Traffic</div>
           <div className="mt-1 text-[26px] font-bold tabular-nums leading-none" style={{ color: "#22c55e" }}>{activeSites}</div>
-          <div className="mt-1.5 text-[11px]" style={{ color: "#5d6566" }}>of 103 total</div>
+          <div className="mt-1.5 text-[11px]" style={{ color: "#5d6566" }}>of 103 published sites</div>
         </div>
       </div>
 
