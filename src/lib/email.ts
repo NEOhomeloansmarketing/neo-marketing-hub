@@ -1,16 +1,14 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 const APP_URL = process.env.NEXTAUTH_URL ?? "https://neo-marketing-hub.vercel.app";
+// Uses Resend's shared sending domain — no DNS setup required.
+// Upgrade to a verified custom domain any time by changing EMAIL_FROM.
+const FROM = process.env.EMAIL_FROM ?? "NEO Marketing Hub <onboarding@resend.dev>";
 
-function createTransport() {
-  const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
-  if (!user || !pass) return null;
-
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: { user, pass },
-  });
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  return new Resend(key);
 }
 
 export interface MentionEmailPayload {
@@ -23,13 +21,12 @@ export interface MentionEmailPayload {
 }
 
 export async function sendMentionEmail(payload: MentionEmailPayload) {
-  const transporter = createTransport();
-  if (!transporter) {
-    console.warn("[email] EMAIL_USER / EMAIL_PASS not set — skipping email");
+  const resend = getResend();
+  if (!resend) {
+    console.warn("[email] RESEND_API_KEY not set — skipping email");
     return;
   }
 
-  const from = process.env.EMAIL_USER!;
   const fullLink = `${APP_URL}${payload.link}`;
   const preview = payload.commentBody.length > 200
     ? payload.commentBody.slice(0, 200) + "…"
@@ -77,7 +74,7 @@ export async function sendMentionEmail(payload: MentionEmailPayload) {
             <p style="margin:0;font-size:13.5px;color:#cbd5e1;line-height:1.6;">${highlightedBody}</p>
           </div>
 
-          <!-- CTA button -->
+          <!-- CTA -->
           <table cellpadding="0" cellspacing="0"><tr>
             <td style="background:linear-gradient(180deg,#5bcbf5,#3aa6cc);border-radius:8px;">
               <a href="${fullLink}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:700;color:#061320;text-decoration:none;border-radius:8px;">
@@ -102,8 +99,8 @@ export async function sendMentionEmail(payload: MentionEmailPayload) {
 </html>`;
 
   try {
-    await transporter.sendMail({
-      from: `"NEO Marketing Hub" <${from}>`,
+    await resend.emails.send({
+      from: FROM,
       to: payload.to,
       subject: `${payload.actorName} mentioned you in ${payload.entityLabel}`,
       html,
