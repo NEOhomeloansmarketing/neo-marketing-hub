@@ -2,6 +2,7 @@
 import { CommentSection } from "@/components/comments/CommentSection";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Owner { id: string; name: string; initials: string; color: string; }
@@ -532,14 +533,22 @@ export function RocksView({
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [detailRock, setDetailRock] = useState<Rock | null>(null);
+  const searchParams = useSearchParams();
 
   const fetchRocks = useCallback(async () => {
     setLoading(true);
     const res = await fetch(`/api/rocks?quarter=${quarter}&year=${year}`);
     const json = await res.json();
-    setRocks(json.rocks ?? []);
+    const loaded: Rock[] = json.rocks ?? [];
+    setRocks(loaded);
     setLoading(false);
-  }, [quarter, year]);
+    // Auto-open rock drawer when ?open=<rockId> is in the URL
+    const openId = searchParams.get("open");
+    if (openId) {
+      const match = loaded.find((r) => r.id === openId);
+      if (match) setDetailRock(match);
+    }
+  }, [quarter, year, searchParams]);
 
   useEffect(() => { fetchRocks(); }, [fetchRocks]);
 

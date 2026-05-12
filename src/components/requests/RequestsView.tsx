@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import { CommentSection } from "@/components/comments/CommentSection";
 
@@ -530,6 +531,16 @@ export function RequestsView({ requests: initialRequests, teamMembers }: Request
   const [composing, setComposing] = useState(false);
   const [filterType, setFilterType] = useState("ALL");
   const [showArchived, setShowArchived] = useState(false);
+  const searchParams = useSearchParams();
+
+  // Auto-open request drawer when ?open=<requestId> is in the URL
+  useEffect(() => {
+    const id = searchParams.get("open");
+    if (id) {
+      const match = initialRequests.find((r) => r.id === id);
+      if (match) setOpenReq(match);
+    }
+  }, [searchParams, initialRequests]);
 
   const uniqueTypes = Array.from(new Set(requests.map((r) => r.requestType).filter(Boolean))).sort();
 

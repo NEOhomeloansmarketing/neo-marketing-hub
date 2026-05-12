@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatCard } from "@/components/ui/StatCard";
 import { CommentSection } from "@/components/comments/CommentSection";
@@ -412,6 +413,16 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   const [query, setQuery] = useState("");
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const [composing, setComposing] = useState(false);
+  const searchParams = useSearchParams();
+
+  // Auto-open task drawer when ?open=<taskId> is in the URL
+  useEffect(() => {
+    const id = searchParams.get("open");
+    if (id) {
+      const match = initialTasks.find((t) => t.id === id);
+      if (match) setOpenTask(match);
+    }
+  }, [searchParams, initialTasks]);
 
   useEffect(() => {
     if (openCompose) setComposing(true);

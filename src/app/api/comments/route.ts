@@ -35,12 +35,12 @@ function entityLink(body: {
   rockId?: string | null;
   requestId?: string | null;
 }): string {
-  // Only meetings have a dedicated detail page; everything else is a drawer on the list page
+  // Meetings have a dedicated page; others use ?open=ID to auto-open the drawer
   if (body.meetingId) return `/meetings/${body.meetingId}`;
-  if (body.requestId) return `/requests`;
-  if (body.taskId) return `/tasks`;
-  if (body.rockId) return `/rocks`;
-  if (body.campaignId) return `/campaigns`;
+  if (body.requestId) return `/requests?open=${body.requestId}`;
+  if (body.taskId) return `/tasks?open=${body.taskId}`;
+  if (body.rockId) return `/rocks?open=${body.rockId}`;
+  if (body.campaignId) return `/campaigns?open=${body.campaignId}`;
   return "/dashboard";
 }
 
