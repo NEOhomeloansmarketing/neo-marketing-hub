@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import { Sidebar } from "@/components/sidebar/Sidebar";
+import { NotificationWidget } from "@/components/notifications/NotificationWidget";
 import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
 import { getActiveTeamId } from "@/lib/team-context";
@@ -63,6 +64,7 @@ export default async function AppLayout({
   return (
     <div className="min-h-screen" style={{ background: "#061320" }}>
       <Sidebar user={displayUser} teams={teams} activeTeamId={activeTeamId} isAdmin={isAdmin} />
+      <NotificationWidget />
       <div className="flex min-h-screen flex-col" style={{ marginLeft: 220 }}>
         <main className="flex-1 p-6">{children}</main>
       </div>

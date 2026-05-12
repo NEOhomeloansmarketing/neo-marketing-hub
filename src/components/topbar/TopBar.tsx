@@ -1,7 +1,3 @@
-"use client";
-
-import { NotificationBell } from "@/components/notifications/NotificationBell";
-
 interface TopBarProps {
   title: string;
   subtitle?: string;
@@ -27,11 +23,6 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             {subtitle}
           </p>
         )}
-      </div>
-
-      {/* Right-side actions */}
-      <div className="flex shrink-0 items-center gap-2">
-        <NotificationBell />
       </div>
     </header>
   );
