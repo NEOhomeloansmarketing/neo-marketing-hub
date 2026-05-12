@@ -49,7 +49,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const startParam = searchParams.get("start");
   const endParam = searchParams.get("end");
-  const mode = searchParams.get("mode") ?? "analytics"; // analytics | details
+  const mode = searchParams.get("mode") ?? "analytics"; // analytics | details | site-weekly
+  const siteIdParam = searchParams.get("siteId");
 
   const authHeader = auth();
   if (!authHeader) return NextResponse.json({ error: "Duda API credentials not configured" }, { status: 500 });
@@ -58,6 +59,46 @@ export async function GET(request: Request) {
   const start = startParam ?? (() => { const d = new Date(); d.setDate(d.getDate() - 30); return toYMD(d); })();
 
   try {
+    // Site-weekly mode: fetch 12 weeks of weekly data for a single site
+    if (mode === "site-weekly" && siteIdParam) {
+      const weeks: { weekStart: string; weekEnd: string; visitors: number; visits: number; pageViews: number }[] = [];
+      const now = new Date();
+      // Build 12 weekly windows (most recent first)
+      const windowPromises = Array.from({ length: 12 }, (_, i) => {
+        const weekEnd = new Date(now.getTime() - i * 7 * 86400000);
+        const weekStart = new Date(weekEnd.getTime() - 6 * 86400000);
+        return {
+          weekStart: toYMD(weekStart),
+          weekEnd: toYMD(weekEnd),
+        };
+      });
+      // Fetch all 12 weeks in parallel (single site so no rate limit concern)
+      const results = await Promise.all(
+        windowPromises.map((w) => fetchAnalytics(siteIdParam, w.weekStart, w.weekEnd, authHeader))
+      );
+      for (let i = 0; i < windowPromises.length; i++) {
+        weeks.push({
+          weekStart: windowPromises[i].weekStart,
+          weekEnd: windowPromises[i].weekEnd,
+          visitors: results[i]?.VISITORS ?? 0,
+          visits: results[i]?.VISITS ?? 0,
+          pageViews: results[i]?.PAGE_VIEWS ?? 0,
+        });
+      }
+      // Also fetch the current period totals
+      const periodStats = await fetchAnalytics(siteIdParam, start, end, authHeader);
+      const site = DUDA_SITES.find((s) => s.siteId === siteIdParam);
+      return NextResponse.json({
+        siteId: siteIdParam,
+        name: site?.name ?? siteIdParam,
+        url: site?.url ?? "",
+        weeks: weeks.reverse(), // oldest first for charting
+        periodVisitors: periodStats?.VISITORS ?? 0,
+        periodVisits: periodStats?.VISITS ?? 0,
+        periodPageViews: periodStats?.PAGE_VIEWS ?? 0,
+      });
+    }
+
     if (mode === "details") {
       // Fetch site details for all sites (batched 10 at a time)
       const details = await batch(DUDA_SITES, 10, async (site) => {

@@ -218,16 +218,35 @@ export function SearchConsoleAnalytics() {
   return (
     <div className="space-y-6">
 
+      {/* Site identity banner */}
+      <div className="flex items-center gap-3 rounded-lg px-4 py-2.5" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md" style={{ background: "#14375a" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </div>
+        <div>
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#5d6566" }}>Tracking site · </span>
+          <a
+            href={selectedSite.startsWith("sc-domain:") ? `https://${selectedSite.replace("sc-domain:", "")}` : selectedSite}
+            target="_blank" rel="noopener noreferrer"
+            className="text-[13px] font-semibold transition hover:underline" style={{ color: "#5bcbf5" }}>
+            {selectedSite.replace("sc-domain:", "")}
+          </a>
+          <span className="ml-2 text-[10px]" style={{ color: "#5d6566" }}>Google Search Console · organic search only</span>
+        </div>
+        {data.sites && data.sites.length > 1 && (
+          <select value={selectedSite} onChange={(e) => { setSelectedSite(e.target.value); fetchSiteData(e.target.value, preset); }}
+            className="ml-auto rounded-md px-3 py-1 text-[12px] text-slate-100 outline-none"
+            style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+            {data.sites.map((s) => <option key={s.siteUrl} value={s.siteUrl}>{s.siteUrl}</option>)}
+          </select>
+        )}
+      </div>
+
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          {data.sites && data.sites.length > 1 ? (
-            <select value={selectedSite} onChange={(e) => { setSelectedSite(e.target.value); fetchSiteData(e.target.value, preset); }}
-              className="rounded-md px-3 py-1.5 text-[13px] text-slate-100 outline-none"
-              style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
-              {data.sites.map((s) => <option key={s.siteUrl} value={s.siteUrl}>{s.siteUrl}</option>)}
-            </select>
-          ) : <span className="text-[12px]" style={{ color: "#5d6566" }}>{data.sites?.[0]?.siteUrl}</span>}
           <button onClick={connect} className="text-[11px] transition hover:underline" style={{ color: "#5d6566" }}>Reconnect</button>
         </div>
         <div className="flex flex-wrap items-center gap-2">

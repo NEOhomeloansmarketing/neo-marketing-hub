@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SiteDetailModal } from "./SiteDetailModal";
 
 interface SiteStats {
   siteId: string;
@@ -70,6 +71,18 @@ function MiniBar({ value, max, color = "#5bcbf5" }: { value: number; max: number
   );
 }
 
+function WoWPill({ current, prev }: { current: number; prev: number }) {
+  const delta = pctDelta(current, prev);
+  if (delta === null) return <span className="text-[10px]" style={{ color: "#5d6566" }}>—</span>;
+  const color = delta > 0 ? "#22c55e" : delta < 0 ? "#f43f5e" : "#858889";
+  return (
+    <span className="inline-flex items-center rounded-full px-1.5 py-[1px] text-[10px] font-semibold tabular-nums"
+      style={{ background: color + "20", color }}>
+      {delta > 0 ? "▲" : delta < 0 ? "▼" : "–"} {Math.abs(delta)}%
+    </span>
+  );
+}
+
 type SortKey = "visitors" | "visits" | "pageViews" | "visitorsDelta" | "name";
 
 export function DudaAnalytics() {
@@ -83,6 +96,7 @@ export function DudaAnalytics() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("visitors");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selectedSite, setSelectedSite] = useState<{ siteId: string; name: string; url: string } | null>(null);
 
   useEffect(() => { fetchData(30); }, []);
 
@@ -142,7 +156,6 @@ export function DudaAnalytics() {
     });
 
   const activeSites = sites.filter((s) => s.visitors > 0).length;
-  const totalDelta = pctDelta(totals.visitors, totals.prevVisitors);
 
   function SortTh({ label, k }: { label: string; k: SortKey }) {
     const active = sortKey === k;
@@ -155,8 +168,23 @@ export function DudaAnalytics() {
     );
   }
 
+  // Period-over-period totals deltas
+  const totalVisitorsDelta = pctDelta(totals.visitors, totals.prevVisitors);
+  const totalVisitsDelta = pctDelta(totals.visits, totals.prevVisits);
+  const totalPageViewsDelta = pctDelta(totals.pageViews, totals.prevPageViews);
+
   return (
     <div className="space-y-6">
+
+      {/* Site Detail Modal */}
+      {selectedSite && (
+        <SiteDetailModal
+          siteId={selectedSite.siteId}
+          siteName={selectedSite.name}
+          siteUrl={selectedSite.url}
+          onClose={() => setSelectedSite(null)}
+        />
+      )}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -205,23 +233,58 @@ export function DudaAnalytics() {
         </div>
       </div>
 
-      {/* Top 10 bar chart */}
-      <div className="rounded-lg p-5" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
-        <div className="mb-4 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>
-          Top 10 Sites by Visitors
+      {/* Period-over-period summary row */}
+      <div className="rounded-lg px-5 py-3 flex flex-wrap gap-6" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+        <div className="flex items-center gap-2 text-[12px]">
+          <span style={{ color: "#858889" }}>Visitors vs prev:</span>
+          {totalVisitorsDelta !== null
+            ? <span className="font-semibold" style={{ color: totalVisitorsDelta >= 0 ? "#22c55e" : "#f43f5e" }}>
+                {totalVisitorsDelta >= 0 ? "+" : ""}{totalVisitorsDelta}%
+              </span>
+            : <span style={{ color: "#5d6566" }}>—</span>}
+          <span className="text-[11px]" style={{ color: "#5d6566" }}>({totals.prevVisitors.toLocaleString()} prev)</span>
         </div>
-        <div className="space-y-2.5">
+        <div className="flex items-center gap-2 text-[12px]">
+          <span style={{ color: "#858889" }}>Visits vs prev:</span>
+          {totalVisitsDelta !== null
+            ? <span className="font-semibold" style={{ color: totalVisitsDelta >= 0 ? "#22c55e" : "#f43f5e" }}>
+                {totalVisitsDelta >= 0 ? "+" : ""}{totalVisitsDelta}%
+              </span>
+            : <span style={{ color: "#5d6566" }}>—</span>}
+        </div>
+        <div className="flex items-center gap-2 text-[12px]">
+          <span style={{ color: "#858889" }}>Page Views vs prev:</span>
+          {totalPageViewsDelta !== null
+            ? <span className="font-semibold" style={{ color: totalPageViewsDelta >= 0 ? "#22c55e" : "#f43f5e" }}>
+                {totalPageViewsDelta >= 0 ? "+" : ""}{totalPageViewsDelta}%
+              </span>
+            : <span style={{ color: "#5d6566" }}>—</span>}
+        </div>
+      </div>
+
+      {/* Top 10 bar chart — clickable */}
+      <div className="rounded-lg p-5" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+        <div className="mb-1 flex items-center justify-between">
+          <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>
+            Top 10 Sites by Visitors
+          </div>
+          <div className="text-[10px]" style={{ color: "#5d6566" }}>Click any row to drill in →</div>
+        </div>
+        <div className="space-y-2.5 mt-4">
           {sites.slice(0, 10).map((s, i) => {
             const delta = pctDelta(s.visitors, s.prevVisitors);
             return (
-              <div key={s.siteId}>
+              <div key={s.siteId}
+                className="cursor-pointer rounded-lg px-3 py-2 -mx-3 transition hover:bg-white/[0.03]"
+                onClick={() => setSelectedSite({ siteId: s.siteId, name: s.name, url: s.url })}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[10px] font-bold tabular-nums w-4 shrink-0" style={{ color: "#5d6566" }}>#{i + 1}</span>
                     <span className="text-[12.5px] font-medium text-slate-100 truncate">{s.name}</span>
                     {s.url && (
                       <a href={s.url} target="_blank" rel="noopener noreferrer"
-                        className="text-[10px] shrink-0 transition hover:underline" style={{ color: "#5d6566" }}>↗</a>
+                        className="text-[10px] shrink-0 transition hover:underline" style={{ color: "#5d6566" }}
+                        onClick={(e) => e.stopPropagation()}>↗</a>
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-[11px] tabular-nums shrink-0 ml-2">
@@ -231,6 +294,7 @@ export function DudaAnalytics() {
                         {delta >= 0 ? "+" : ""}{delta}%
                       </span>
                     )}
+                    <span className="text-[10px] rounded-full px-1.5 py-[1px]" style={{ background: "#14375a", color: "#5bcbf5" }}>Details →</span>
                   </div>
                 </div>
                 <MiniBar value={s.visitors} max={maxVisitors} color="#5bcbf5" />
@@ -256,27 +320,33 @@ export function DudaAnalytics() {
           />
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table className="w-full" style={{ minWidth: 640 }}>
+          <table className="w-full" style={{ minWidth: 700 }}>
             <thead>
               <tr style={{ background: "#0a2540", borderBottom: "1px solid #1d4368" }}>
                 <SortTh label="Advisor / Site" k="name" />
                 <SortTh label="Visitors" k="visitors" />
+                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>WoW</th>
                 <SortTh label="Visits" k="visits" />
                 <SortTh label="Page Views" k="pageViews" />
-                <SortTh label="WoP Change" k="visitorsDelta" />
+                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Views/Visit</th>
                 <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Site</th>
+                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((s, i) => {
-                const delta = pctDelta(s.visitors, s.prevVisitors);
                 const isLast = i === filtered.length - 1;
+                const ratio = s.visits > 0 ? (s.pageViews / s.visits).toFixed(1) : "—";
                 return (
                   <tr key={s.siteId} style={{ borderBottom: isLast ? "none" : "1px solid #0a2540" }}
-                    className="hover:bg-white/[0.01] transition">
+                    className="hover:bg-white/[0.01] transition cursor-pointer"
+                    onClick={() => setSelectedSite({ siteId: s.siteId, name: s.name, url: s.url })}>
                     <td className="px-4 py-3 text-[13px] font-semibold text-slate-100">{s.name}</td>
                     <td className="px-4 py-3 text-[13px] font-bold tabular-nums" style={{ color: "#5bcbf5" }}>
                       {s.visitors.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <WoWPill current={s.visitors} prev={s.prevVisitors} />
                     </td>
                     <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: "#6366f1" }}>
                       {s.visits.toLocaleString()}
@@ -284,13 +354,10 @@ export function DudaAnalytics() {
                     <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: "#a855f7" }}>
                       {s.pageViews.toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-[12px] font-semibold tabular-nums">
-                      {delta !== null
-                        ? <span style={{ color: delta >= 0 ? "#22c55e" : "#f43f5e" }}>{delta >= 0 ? "+" : ""}{delta}%</span>
-                        : <span style={{ color: "#5d6566" }}>—</span>
-                      }
+                    <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: "#858889" }}>
+                      {ratio}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {s.url
                         ? <a href={s.url} target="_blank" rel="noopener noreferrer"
                             className="text-[11px] transition hover:underline" style={{ color: "#5bcbf5" }}>
@@ -298,6 +365,11 @@ export function DudaAnalytics() {
                           </a>
                         : <span className="text-[11px]" style={{ color: "#5d6566" }}>—</span>
                       }
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-[10px] rounded-full px-2 py-[2px]" style={{ background: "#14375a", color: "#5bcbf5" }}>
+                        Details →
+                      </span>
                     </td>
                   </tr>
                 );
