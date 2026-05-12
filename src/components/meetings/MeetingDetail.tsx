@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
+import { TranscribeModal } from "./TranscribeModal";
 
 interface Person {
   id: string;
@@ -306,6 +307,9 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
     setDecisions((prev) => prev.filter((d) => d.id !== id));
   };
 
+  // Transcribe modal
+  const [showTranscribe, setShowTranscribe] = useState(false);
+
   // Extract AI
   const [extracting, setExtracting] = useState(false);
   const handleExtractAI = async () => {
@@ -324,6 +328,7 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
   const statusLabel = status === "COMPLETED" ? "Completed" : status === "IN_PROGRESS" ? "In progress" : "Upcoming";
 
   return (
+    <>
     <div className="flex h-full flex-col" style={{ minHeight: "calc(100vh - 120px)" }}>
       {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div
@@ -394,6 +399,17 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
             </svg>
+          </button>
+
+          {/* Analyze Transcript button — always visible */}
+          <button
+            onClick={() => setShowTranscribe(true)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition hover:brightness-110"
+            style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)", color: "#c084fc" }}
+            title="Analyze Teams transcript with AI"
+          >
+            <span>🎙</span>
+            <span className="hidden sm:inline">AI Transcript</span>
           </button>
 
           {status === "UPCOMING" && (
@@ -790,5 +806,16 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
         </div>
       </div>
     </div>
+
+    {/* ── Transcribe Modal ── */}
+    {showTranscribe && (
+      <TranscribeModal
+        meetingId={meeting.id}
+        attendees={meeting.attendees.map((a) => ({ id: a.id, name: a.name, color: a.color, initials: a.initials }))}
+        onClose={() => setShowTranscribe(false)}
+        onActionsCreated={(items) => setActionItems((prev) => [...prev, ...items])}
+      />
+    )}
+    </>
   );
 }

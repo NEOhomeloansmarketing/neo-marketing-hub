@@ -14,12 +14,16 @@ export default async function RocksPage() {
   }).catch(() => []);
 
   // Load available tasks for linking
-  const tasks = await db.task.findMany({
+  const rawTasks = await db.task.findMany({
     where: { status: { not: "DONE" } },
     select: { id: true, title: true, status: true, priority: true, dueDate: true },
     orderBy: { createdAt: "desc" },
     take: 200,
   }).catch(() => []);
+  const tasks = rawTasks.map((t) => ({
+    ...t,
+    dueDate: t.dueDate ? t.dueDate.toISOString().split("T")[0] : null,
+  }));
 
   return (
     <>
