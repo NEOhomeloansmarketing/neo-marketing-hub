@@ -697,13 +697,6 @@ interface TaskAttachment {
   uploadedBy: { id: string; name: string; initials?: string; color?: string };
 }
 
-interface TaskComment {
-  id: string;
-  body: string;
-  createdAt: string;
-  author: { id: string; name: string; color?: string; initials?: string };
-}
-
 function TaskDetailDrawer({
   task,
   teamMembers,
@@ -730,25 +723,14 @@ function TaskDetailDrawer({
   const [editBucket, setEditBucket] = useState(task.dueBucket ?? "later");
   const [saving, setSaving] = useState(false);
 
-  // Comments
-  const [comments, setComments] = useState<TaskComment[]>([]);
-  const [commentsLoading, setCommentsLoading] = useState(true);
-  const [commentDraft, setCommentDraft] = useState("");
-  const [postingComment, setPostingComment] = useState(false);
-
   // Attachments
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploadingFile, setUploadingFile] = useState(false);
 
   useEffect(() => {
-    setCommentsLoading(true);
-    Promise.all([
-      fetch(`/api/tasks/${task.id}/comments`).then((r) => r.json()),
-      fetch(`/api/tasks/${task.id}/attachments`).then((r) => r.json()),
-    ]).then(([commentData, attachmentData]) => {
-      if (Array.isArray(commentData)) setComments(commentData);
-      if (Array.isArray(attachmentData)) setAttachments(attachmentData);
-    }).finally(() => setCommentsLoading(false));
+    fetch(`/api/tasks/${task.id}/attachments`).then((r) => r.json()).then((data) => {
+      if (Array.isArray(data)) setAttachments(data);
+    });
   }, [task.id]);
 
   useEffect(() => {
@@ -791,25 +773,6 @@ function TaskDetailDrawer({
       setSaving(false);
     }
     onClose();
-  };
-
-  const handlePostComment = async () => {
-    if (!commentDraft.trim()) return;
-    setPostingComment(true);
-    try {
-      const res = await fetch(`/api/tasks/${task.id}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: commentDraft.trim() }),
-      });
-      if (res.ok) {
-        const newComment = await res.json();
-        setComments((prev) => [...prev, newComment]);
-        setCommentDraft("");
-      }
-    } finally {
-      setPostingComment(false);
-    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

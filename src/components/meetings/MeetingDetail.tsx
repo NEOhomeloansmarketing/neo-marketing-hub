@@ -444,7 +444,7 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
 
         {/* ── Agenda sidebar ──────────────────────────────────────── */}
         <div
-          className="hidden lg:flex w-56 shrink-0 flex-col rounded-xl overflow-hidden"
+          className="flex w-56 shrink-0 flex-col rounded-xl overflow-hidden"
           style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
         >
           <div
@@ -635,7 +635,7 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
         </div>
 
         {/* ── Right rail ──────────────────────────────────────────── */}
-        <div className="hidden xl:flex w-64 shrink-0 flex-col gap-4">
+        <div className="flex w-64 shrink-0 flex-col gap-4" style={{ display: "flex" }}>
 
           {/* Action items */}
           <div
