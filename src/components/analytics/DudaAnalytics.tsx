@@ -38,6 +38,11 @@ const PRESETS = [
   { label: "6 months", days: 180 },
 ];
 
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
 function toYMD(d: Date) { return d.toISOString().split("T")[0]; }
 function fmtDate(ymd: string) {
   return new Date(ymd + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -46,6 +51,246 @@ function pctDelta(current: number, prev: number) {
   if (!prev) return null;
   return Math.round(((current - prev) / prev) * 100);
 }
+function pctStr(current: number, prev: number) {
+  const d = pctDelta(current, prev);
+  if (d === null) return "N/A";
+  return (d >= 0 ? "+" : "") + d + "%";
+}
+
+// ── CSV export ──────────────────────────────────────────────────────────────
+
+function csvEscape(v: string | number) {
+  const s = String(v);
+  return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function buildCsv(data: AnalyticsData, reportLabel: string): string {
+  const { sites, totals, dateRange } = data;
+  const now = new Date().toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+  const rows: string[] = [];
+
+  // Header block
+  rows.push(`NEO Marketing Hub — Matrix Sites Report`);
+  rows.push(`Report:,${csvEscape(reportLabel)}`);
+  rows.push(`Period:,${csvEscape(fmtDate(dateRange.start))} – ${csvEscape(fmtDate(dateRange.end))}`);
+  rows.push(`Comparison:,${csvEscape(fmtDate(dateRange.prevStart))} – ${csvEscape(fmtDate(dateRange.prevEnd))}`);
+  rows.push(`Generated:,${csvEscape(now)}`);
+  rows.push(`Total Sites:,103`);
+  rows.push(`Active Sites (any visitors):,${sites.filter(s => s.visitors > 0).length}`);
+  rows.push("");
+
+  // Network totals summary
+  rows.push("NETWORK TOTALS");
+  rows.push([
+    "Metric","Current Period","Previous Period","Change %",
+  ].map(csvEscape).join(","));
+  rows.push(["Visitors", totals.visitors, totals.prevVisitors, pctStr(totals.visitors, totals.prevVisitors)].map(csvEscape).join(","));
+  rows.push(["Visits", totals.visits, totals.prevVisits, pctStr(totals.visits, totals.prevVisits)].map(csvEscape).join(","));
+  rows.push(["Page Views", totals.pageViews, totals.prevPageViews, pctStr(totals.pageViews, totals.prevPageViews)].map(csvEscape).join(","));
+  rows.push("");
+
+  // Per-site data
+  rows.push("SITE-BY-SITE BREAKDOWN");
+  const cols = [
+    "Rank",
+    "Advisor / Site",
+    "URL",
+    "Visitors",
+    "Visits",
+    "Page Views",
+    "Prev Visitors",
+    "Prev Visits",
+    "Prev Page Views",
+    "Visitor Change %",
+    "Visits Change %",
+    "Page Views Change %",
+    "Views / Visit",
+    "Active (has traffic)",
+  ];
+  rows.push(cols.map(csvEscape).join(","));
+
+  const sorted = [...sites].sort((a, b) => b.visitors - a.visitors);
+  sorted.forEach((s, i) => {
+    const viewsPerVisit = s.visits > 0 ? (s.pageViews / s.visits).toFixed(2) : "0.00";
+    const active = s.visitors > 0 ? "Yes" : "No";
+    rows.push([
+      i + 1,
+      s.name,
+      s.url,
+      s.visitors,
+      s.visits,
+      s.pageViews,
+      s.prevVisitors,
+      s.prevVisits,
+      s.prevPageViews,
+      pctStr(s.visitors, s.prevVisitors),
+      pctStr(s.visits, s.prevVisits),
+      pctStr(s.pageViews, s.prevPageViews),
+      viewsPerVisit,
+      active,
+    ].map(csvEscape).join(","));
+  });
+
+  rows.push("");
+  rows.push("END OF REPORT — NEO Marketing Hub");
+
+  return rows.join("\n");
+}
+
+function downloadCsv(content: string, filename: string) {
+  const blob = new Blob(["﻿" + content, ""], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Monthly Report Modal ─────────────────────────────────────────────────────
+
+function MonthlyReportModal({ onClose }: { onClose: () => void }) {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth()); // 0-indexed
+  const [year, setYear] = useState(now.getFullYear());
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState("");
+
+  // Default to previous month for a "complete" month
+  useEffect(() => {
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    setMonth(prev.getMonth());
+    setYear(prev.getFullYear());
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function generate() {
+    setLoading(true);
+    setProgress("Fetching site data from Duda API…");
+
+    try {
+      // Calendar month boundaries
+      const start = toYMD(new Date(year, month, 1));
+      const end = toYMD(new Date(year, month + 1, 0)); // last day of month
+
+      // Comparison: same period previous month
+      const prevMonthStart = new Date(year, month - 1, 1);
+      const prevMonthEnd = new Date(year, month, 0);
+
+      setProgress("Fetching analytics for all 103 sites… (15–20 seconds)");
+      const res = await fetch(`/api/duda?start=${start}&end=${end}`);
+      if (!res.ok) throw new Error("Failed to fetch data");
+      const data: AnalyticsData = await res.json();
+
+      setProgress("Building spreadsheet…");
+
+      const monthLabel = `${MONTHS[month]} ${year}`;
+      const csv = buildCsv(data, `${monthLabel} Monthly Report`);
+      const filename = `NEO-Matrix-Sites-${MONTHS[month]}-${year}.csv`;
+
+      downloadCsv(csv, filename);
+      setProgress("Downloaded!");
+      setTimeout(onClose, 800);
+    } catch (e) {
+      setProgress(`Error: ${String(e)}`);
+      setLoading(false);
+    }
+  }
+
+  const yearOptions = [-2, -1, 0, 1].map(o => now.getFullYear() + o);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}
+    >
+      <div className="w-full max-w-md rounded-2xl" style={{ background: "#07192e", border: "1px solid #1d4368" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #1d4368" }}>
+          <div>
+            <div className="text-[14px] font-bold text-slate-100">Monthly Report Export</div>
+            <div className="text-[11px] mt-0.5" style={{ color: "#5d6566" }}>All 103 Matrix sites · CSV spreadsheet</div>
+          </div>
+          {!loading && (
+            <button onClick={onClose} className="text-[22px] leading-none transition hover:opacity-60" style={{ color: "#858889" }}>×</button>
+          )}
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Month / Year pickers */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Month</label>
+              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} disabled={loading}
+                className="w-full rounded-lg px-3 py-2.5 text-[13px] text-slate-100 outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Year</label>
+              <select value={year} onChange={e => setYear(parseInt(e.target.value))} disabled={loading}
+                className="w-full rounded-lg px-3 py-2.5 text-[13px] text-slate-100 outline-none"
+                style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Preview of what will be included */}
+          <div className="rounded-lg p-4 space-y-1.5" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "#858889" }}>Report includes</div>
+            {[
+              "Network totals (visitors, visits, page views)",
+              "All 103 advisor sites ranked by visitors",
+              "Period vs. previous month comparison",
+              "Visitor / visits / page views change %",
+              "Views per visit ratio",
+              "Active site flag (has traffic)",
+              "Direct URL for each site",
+            ].map(item => (
+              <div key={item} className="flex items-center gap-2 text-[11.5px]" style={{ color: "#a8aaab" }}>
+                <span style={{ color: "#22c55e" }}>✓</span> {item}
+              </div>
+            ))}
+          </div>
+
+          {/* Progress / status */}
+          {loading && (
+            <div className="rounded-lg px-4 py-3 text-[12px] text-center" style={{ background: "#0e2b48", border: "1px solid #1d4368", color: "#5bcbf5" }}>
+              <div className="flex items-center justify-center gap-2">
+                <div className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                {progress}
+              </div>
+            </div>
+          )}
+          {!loading && progress && (
+            <div className="rounded-lg px-4 py-3 text-[12px] text-center" style={{ background: "#22c55e22", border: "1px solid #22c55e44", color: "#22c55e" }}>
+              {progress}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4" style={{ borderTop: "1px solid #1d4368" }}>
+          {!loading && <button onClick={onClose} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition hover:opacity-70" style={{ color: "#858889" }}>Cancel</button>}
+          <button onClick={generate} disabled={loading}
+            className="flex items-center gap-2 rounded-lg px-5 py-2 text-[12.5px] font-semibold transition disabled:opacity-60"
+            style={{ background: "#5bcbf5", color: "#061320" }}>
+            {loading
+              ? <><div className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" /> Generating…</>
+              : <>⬇ Generate & Download</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, prev, color }: { label: string; value: number; prev: number; color: string }) {
   const delta = pctDelta(value, prev);
@@ -85,6 +330,8 @@ function WoWPill({ current, prev }: { current: number; prev: number }) {
 
 type SortKey = "visitors" | "visits" | "pageViews" | "visitorsDelta" | "name";
 
+// ── Main component ───────────────────────────────────────────────────────────
+
 export function DudaAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,8 +344,17 @@ export function DudaAnalytics() {
   const [sortKey, setSortKey] = useState<SortKey>("visitors");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedSite, setSelectedSite] = useState<{ siteId: string; name: string; url: string } | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showMonthlyModal, setShowMonthlyModal] = useState(false);
 
   useEffect(() => { fetchData(30); }, []);
+  // Close export menu on outside click
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handler = () => setShowExportMenu(false);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [showExportMenu]);
 
   async function fetchData(days: number, start?: string, end?: string) {
     setLoading(true); setError("");
@@ -126,6 +382,16 @@ export function DudaAnalytics() {
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("desc"); }
+  }
+
+  function exportCurrentView() {
+    if (!data) return;
+    const label = useCustom
+      ? `Custom Range ${customStart} to ${customEnd}`
+      : `Last ${preset} Days`;
+    const csv = buildCsv(data, label);
+    const ts = new Date().toISOString().split("T")[0];
+    downloadCsv(csv, `NEO-Matrix-Sites-${ts}.csv`);
   }
 
   if (loading) return (
@@ -156,6 +422,9 @@ export function DudaAnalytics() {
     });
 
   const activeSites = sites.filter((s) => s.visitors > 0).length;
+  const totalVisitorsDelta = pctDelta(totals.visitors, totals.prevVisitors);
+  const totalVisitsDelta = pctDelta(totals.visits, totals.prevVisits);
+  const totalPageViewsDelta = pctDelta(totals.pageViews, totals.prevPageViews);
 
   function SortTh({ label, k }: { label: string; k: SortKey }) {
     const active = sortKey === k;
@@ -168,15 +437,10 @@ export function DudaAnalytics() {
     );
   }
 
-  // Period-over-period totals deltas
-  const totalVisitorsDelta = pctDelta(totals.visitors, totals.prevVisitors);
-  const totalVisitsDelta = pctDelta(totals.visits, totals.prevVisits);
-  const totalPageViewsDelta = pctDelta(totals.pageViews, totals.prevPageViews);
-
   return (
     <div className="space-y-6">
 
-      {/* Site Detail Modal */}
+      {/* Modals */}
       {selectedSite && (
         <SiteDetailModal
           siteId={selectedSite.siteId}
@@ -185,6 +449,7 @@ export function DudaAnalytics() {
           onClose={() => setSelectedSite(null)}
         />
       )}
+      {showMonthlyModal && <MonthlyReportModal onClose={() => setShowMonthlyModal(false)} />}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -195,6 +460,7 @@ export function DudaAnalytics() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Date presets */}
           {PRESETS.map((p) => (
             <button key={p.days} onClick={() => applyPreset(p.days)}
               className="rounded-md px-3 py-1.5 text-[12px] font-semibold transition"
@@ -214,6 +480,48 @@ export function DudaAnalytics() {
           <button onClick={applyCustom} disabled={!customStart || !customEnd}
             className="rounded-md px-3 py-1.5 text-[12px] font-semibold transition disabled:opacity-40"
             style={{ background: "#5bcbf5", color: "#061320" }}>Apply</button>
+
+          {/* Export dropdown */}
+          <div className="relative" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setShowExportMenu(v => !v)}
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition hover:opacity-80"
+              style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl p-1.5"
+                style={{ background: "#0a2540", border: "1px solid #1d4368", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}>
+                <button
+                  onClick={() => { exportCurrentView(); setShowExportMenu(false); }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[12px] transition hover:bg-white/[0.04]"
+                  style={{ color: "#cbd5e1" }}>
+                  <span style={{ color: "#5bcbf5" }}>⬇</span>
+                  <div>
+                    <div className="font-semibold">Export Current View</div>
+                    <div className="text-[10px]" style={{ color: "#5d6566" }}>Downloads the loaded date range</div>
+                  </div>
+                </button>
+                <div className="my-1 h-px" style={{ background: "#1d4368" }} />
+                <button
+                  onClick={() => { setShowMonthlyModal(true); setShowExportMenu(false); }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[12px] transition hover:bg-white/[0.04]"
+                  style={{ color: "#cbd5e1" }}>
+                  <span style={{ color: "#22c55e" }}>📅</span>
+                  <div>
+                    <div className="font-semibold">Monthly Report</div>
+                    <div className="text-[10px]" style={{ color: "#5d6566" }}>Pick a month, export full report</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -306,10 +614,10 @@ export function DudaAnalytics() {
 
       {/* Full table */}
       <div className="rounded-lg overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
-        {/* Search */}
         <div className="px-5 py-3 flex items-center gap-3" style={{ borderBottom: "1px solid #1d4368" }}>
           <div className="text-[11px] font-semibold uppercase tracking-wider flex-1" style={{ color: "#858889" }}>
             All Sites
+            <span className="ml-2 font-normal" style={{ color: "#5d6566" }}>— click any row to drill in</span>
           </div>
           <input
             value={search}
@@ -318,11 +626,22 @@ export function DudaAnalytics() {
             className="rounded-md px-3 py-1.5 text-[12px] text-slate-100 outline-none"
             style={{ background: "#0a2540", border: "1px solid #1d4368", width: 220 }}
           />
+          {/* Quick export from table header */}
+          <button
+            onClick={exportCurrentView}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80 shrink-0"
+            style={{ background: "#0a2540", border: "1px solid #1d4368", color: "#858889" }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            CSV
+          </button>
         </div>
         <div style={{ overflowX: "auto" }}>
           <table className="w-full" style={{ minWidth: 700 }}>
             <thead>
               <tr style={{ background: "#0a2540", borderBottom: "1px solid #1d4368" }}>
+                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>#</th>
                 <SortTh label="Advisor / Site" k="name" />
                 <SortTh label="Visitors" k="visitors" />
                 <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>WoW</th>
@@ -330,17 +649,20 @@ export function DudaAnalytics() {
                 <SortTh label="Page Views" k="pageViews" />
                 <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Views/Visit</th>
                 <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Site</th>
-                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}></th>
+                <th className="px-4 py-2.5" style={{ color: "#858889" }}></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((s, i) => {
                 const isLast = i === filtered.length - 1;
                 const ratio = s.visits > 0 ? (s.pageViews / s.visits).toFixed(1) : "—";
+                // Rank in the full sorted list
+                const rank = sites.findIndex(x => x.siteId === s.siteId) + 1;
                 return (
                   <tr key={s.siteId} style={{ borderBottom: isLast ? "none" : "1px solid #0a2540" }}
                     className="hover:bg-white/[0.01] transition cursor-pointer"
                     onClick={() => setSelectedSite({ siteId: s.siteId, name: s.name, url: s.url })}>
+                    <td className="px-4 py-3 text-[11px] tabular-nums" style={{ color: "#5d6566" }}>#{rank}</td>
                     <td className="px-4 py-3 text-[13px] font-semibold text-slate-100">{s.name}</td>
                     <td className="px-4 py-3 text-[13px] font-bold tabular-nums" style={{ color: "#5bcbf5" }}>
                       {s.visitors.toLocaleString()}
