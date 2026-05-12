@@ -3,7 +3,22 @@ import { StatCard } from "@/components/ui/StatCard";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { getActiveTeamId } from "@/lib/team-context";
+import { getDudaDashboardStats } from "@/lib/duda-stats";
+import { getGscDashboardStats } from "@/lib/gsc-stats";
 import Link from "next/link";
+
+function DeltaBadge({ delta }: { delta: number | null }) {
+  if (delta === null) return null;
+  const positive = delta >= 0;
+  return (
+    <span
+      className="text-[10px] font-semibold"
+      style={{ color: positive ? "#22c55e" : "#f43f5e" }}
+    >
+      {positive ? "+" : ""}{delta}% vs prev 30d
+    </span>
+  );
+}
 
 export default async function DashboardPage() {
   await requireAuth();
@@ -17,6 +32,7 @@ export default async function DashboardPage() {
     totalIdeas: 0,
     openRequests: 0,
     newRequests: 0,
+    activeCampaigns: 0,
   };
 
   let recentMeetings: {
@@ -48,9 +64,18 @@ export default async function DashboardPage() {
   const activeTeamId = await getActiveTeamId();
   const teamFilter = activeTeamId ? { OR: [{ teamId: activeTeamId }, { teamId: null }] } : {};
 
+  // Fetch external stats in parallel with DB queries
+  const [dudaStats, gscStats] = await Promise.all([
+    getDudaDashboardStats().catch(() => null),
+    getGscDashboardStats().catch(() => null),
+  ]);
+
   try {
     const now = new Date();
-    const [tasks, actions, meetings, tools, advisors, ideas, openReqs, newReqs] = await Promise.all([
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const [tasks, actions, meetings, tools, advisors, ideas, openReqs, newReqs, campaigns] = await Promise.all([
       db.task.count({ where: { ...teamFilter, status: { not: "DONE" } } }),
       db.actionItem.count({ where: { ...teamFilter, status: { not: "DONE" } } }),
       db.meeting.count({ where: { ...teamFilter, scheduledAt: { gte: now }, status: "UPCOMING" } }),
@@ -59,6 +84,7 @@ export default async function DashboardPage() {
       db.idea.count({ where: { ...teamFilter, status: { not: "ARCHIVED" } } }),
       db.marketingRequest.count({ where: { status: { notIn: ["DELIVERED", "ARCHIVED"] } } }),
       db.marketingRequest.count({ where: { status: "NEW" } }),
+      db.campaign.count({ where: { month: currentMonth, year: currentYear } }).catch(() => 0),
     ]);
 
     stats = {
@@ -70,6 +96,7 @@ export default async function DashboardPage() {
       totalIdeas: ideas,
       openRequests: openReqs,
       newRequests: newReqs,
+      activeCampaigns: campaigns,
     };
 
     recentRequests = await db.marketingRequest.findMany({
@@ -121,6 +148,86 @@ export default async function DashboardPage() {
           <StatCard span={4} label="Open requests" value={String(stats.openRequests)} delta="in pipeline" tone="indigo" />
           <StatCard span={4} label="New requests" value={String(stats.newRequests)} delta="need review" />
         </div>
+
+        {/* Digital Presence — Duda + GSC */}
+        {(dudaStats || gscStats) && (
+          <div>
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-widest" style={{ color: "#5d6566" }}>
+              Digital Presence · Last 30 days
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+              {/* Duda stats */}
+              {dudaStats && (
+                <>
+                  <div className="col-span-2 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Matrix Visitors</div>
+                    <div className="mt-1 text-[24px] font-bold tabular-nums leading-none" style={{ color: "#5bcbf5" }}>
+                      {dudaStats.visitors30.toLocaleString()}
+                    </div>
+                    <div className="mt-1.5 space-y-0.5">
+                      <DeltaBadge delta={dudaStats.visitorsDelta} />
+                      <div className="text-[10px]" style={{ color: "#5d6566" }}>
+                        7d: {dudaStats.visitors7.toLocaleString()} · {dudaStats.activeSites}/{dudaStats.totalSites} active
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-span-2 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Matrix Visits</div>
+                    <div className="mt-1 text-[24px] font-bold tabular-nums leading-none" style={{ color: "#6366f1" }}>
+                      {dudaStats.visits30.toLocaleString()}
+                    </div>
+                    <div className="mt-1.5 text-[10px]" style={{ color: "#5d6566" }}>across all sites</div>
+                  </div>
+                  <div className="col-span-2 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Page Views</div>
+                    <div className="mt-1 text-[24px] font-bold tabular-nums leading-none" style={{ color: "#a855f7" }}>
+                      {dudaStats.pageViews30.toLocaleString()}
+                    </div>
+                    <div className="mt-1.5 text-[10px]" style={{ color: "#5d6566" }}>Matrix network total</div>
+                  </div>
+                </>
+              )}
+
+              {/* GSC stats */}
+              {gscStats && (
+                <>
+                  <div className="col-span-2 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Organic Clicks</div>
+                    <div className="mt-1 text-[24px] font-bold tabular-nums leading-none" style={{ color: "#22c55e" }}>
+                      {gscStats.clicks.toLocaleString()}
+                    </div>
+                    <div className="mt-1.5 space-y-0.5">
+                      <DeltaBadge delta={gscStats.clicksDelta} />
+                      <div className="text-[10px]" style={{ color: "#5d6566" }}>Search Console</div>
+                    </div>
+                  </div>
+                  <div className="col-span-2 rounded-lg p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>Impressions</div>
+                    <div className="mt-1 text-[24px] font-bold tabular-nums leading-none" style={{ color: "#f59e0b" }}>
+                      {gscStats.impressions.toLocaleString()}
+                    </div>
+                    <div className="mt-1.5 text-[10px]" style={{ color: "#5d6566" }}>
+                      CTR {gscStats.ctr}% · Pos {gscStats.position}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Placeholder if only one source */}
+              {dudaStats && !gscStats && (
+                <Link
+                  href="/analytics?tab=search"
+                  className="col-span-2 rounded-lg p-4 flex flex-col justify-between transition hover:opacity-90"
+                  style={{ background: "#061320", border: "1px dashed #1d4368" }}
+                >
+                  <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#5d6566" }}>Search Console</div>
+                  <div className="mt-3 text-[12px] font-medium" style={{ color: "#5bcbf5" }}>Connect →</div>
+                  <div className="text-[10px]" style={{ color: "#5d6566" }}>See organic clicks & rankings</div>
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-12 gap-5">
           {/* Recent meetings */}
@@ -330,11 +437,12 @@ export default async function DashboardPage() {
             { label: "Tools & Logins", count: stats.totalTools, href: "/tools", desc: "SaaS tools registry" },
             { label: "Advisor Compliance", count: stats.totalAdvisors, href: "/advisors", desc: "Active advisors" },
             { label: "Ideas", count: stats.totalIdeas, href: "/ideas", desc: "Active ideas" },
+            { label: "Campaigns", count: stats.activeCampaigns, href: "/campaigns", desc: "This month" },
           ].map((card) => (
             <Link
               key={card.href}
               href={card.href}
-              className="col-span-12 md:col-span-4 rounded-lg p-4 transition hover:-translate-y-0.5"
+              className="col-span-12 md:col-span-3 rounded-lg p-4 transition hover:-translate-y-0.5"
               style={{ background: "#0e2b48", border: "1px solid #1d4368" }}
             >
               <div className="text-[24px] font-semibold tabular-nums text-slate-100">
