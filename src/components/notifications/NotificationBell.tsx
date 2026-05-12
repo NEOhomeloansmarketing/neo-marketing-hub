@@ -111,7 +111,7 @@ export function NotificationBell() {
       {/* Panel */}
       {open && (
         <div
-          className="absolute left-full top-0 ml-2 z-50 flex flex-col rounded-xl overflow-hidden"
+          className="absolute right-0 top-full mt-2 z-50 flex flex-col rounded-xl overflow-hidden"
           style={{
             width: 320,
             maxHeight: "80vh",
