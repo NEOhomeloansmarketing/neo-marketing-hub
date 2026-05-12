@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
 import { getOrCreateDbUser } from "@/lib/get-or-create-user";
+import { sendMentionEmail } from "@/lib/email";
 
-// Parse @Name mentions from comment body and return matched user ids
-async function resolveMentions(body: string): Promise<string[]> {
+// Parse @Name mentions, return matched users with email
+async function resolveMentions(body: string): Promise<{ id: string; name: string; email: string }[]> {
   const matches = body.match(/@([\w][\w\s'-]*)/g);
   if (!matches || matches.length === 0) return [];
 
@@ -13,11 +14,18 @@ async function resolveMentions(body: string): Promise<string[]> {
     names.map((name) =>
       db.user.findFirst({
         where: { name: { contains: name, mode: "insensitive" }, isActive: true },
-        select: { id: true },
+        select: { id: true, name: true, email: true },
       })
     )
   );
-  return [...new Set(users.filter(Boolean).map((u) => u!.id))];
+
+  // Deduplicate by id
+  const seen = new Set<string>();
+  return users.filter(Boolean).filter((u) => {
+    if (seen.has(u!.id)) return false;
+    seen.add(u!.id);
+    return true;
+  }) as { id: string; name: string; email: string }[];
 }
 
 function entityLink(body: {
@@ -97,8 +105,8 @@ export async function POST(req: Request) {
       },
     });
 
-    // Resolve @mentions and create notifications
-    const mentionedIds = await resolveMentions(text);
+    // Resolve @mentions and create notifications + emails
+    const mentionedUsers = await resolveMentions(text);
     const link = entityLink({ taskId, campaignId, meetingId, rockId, requestId });
 
     // Entity label for notification message
@@ -110,20 +118,31 @@ export async function POST(req: Request) {
     else if (campaignId) entityLabel = "a campaign";
 
     await Promise.all(
-      mentionedIds
-        .filter((id) => id !== dbUser.id) // don't notify yourself
-        .map((userId) =>
-          db.notification.create({
+      mentionedUsers
+        .filter((u) => u.id !== dbUser.id) // don't notify yourself
+        .map(async (mentionedUser) => {
+          // In-app notification
+          await db.notification.create({
             data: {
-              userId,
+              userId: mentionedUser.id,
               actorId: dbUser.id,
               type: "MENTION",
               message: `${dbUser.name} mentioned you in ${entityLabel}`,
               link,
               commentId: comment.id,
             },
-          })
-        )
+          });
+
+          // Email notification (fire-and-forget — won't delay the response)
+          sendMentionEmail({
+            to: mentionedUser.email,
+            recipientName: mentionedUser.name,
+            actorName: dbUser.name,
+            entityLabel,
+            commentBody: text.trim(),
+            link,
+          });
+        })
     );
 
     return NextResponse.json(comment, { status: 201 });
