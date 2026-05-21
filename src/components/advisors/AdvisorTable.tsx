@@ -13,6 +13,15 @@ interface AdvisorChannel {
   label?: string | null;
 }
 
+interface VisibilityAuditRecord {
+  id: string;
+  status: string;
+  score?: number | null;
+  createdAt: string;
+  completedAt?: string | null;
+  actionItems?: Array<{ priority: number; platform: string; action: string; url?: string }> | null;
+}
+
 interface Advisor {
   id: string;
   name: string;
@@ -37,9 +46,13 @@ interface Advisor {
   socialToolUrl?: string | null;
   napFormUrl?: string | null;
   napNotes?: string | null;
+  title?: string | null;
+  category?: string | null;
+  serviceArea?: string | null;
   status: string;
   channels: AdvisorChannel[];
   openIssues: number;
+  visibilityAudits?: VisibilityAuditRecord[];
 }
 
 interface AdvisorTableProps {
@@ -120,6 +133,13 @@ function AdvisorDrawerContent({
   const [customUrl, setCustomUrl] = useState("");
   const [uploadingNap, setUploadingNap] = useState(false);
   const napFileRef = useRef<HTMLInputElement>(null);
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [latestAudit, setLatestAudit] = useState<VisibilityAuditRecord | null>(
+    initialAdvisor.visibilityAudits?.[0] ?? null
+  );
+  const [auditHistory, setAuditHistory] = useState<VisibilityAuditRecord[]>(
+    initialAdvisor.visibilityAudits ?? []
+  );
 
   const patch = async (data: Partial<Advisor>) => {
     setAdvisor((a) => ({ ...a, ...data }));
@@ -199,6 +219,24 @@ function AdvisorDrawerContent({
     }
     setUploadingNap(false);
     if (napFileRef.current) napFileRef.current.value = "";
+  };
+
+  const runAudit = async () => {
+    setAuditRunning(true);
+    try {
+      const res = await fetch(`/api/advisors/${advisor.id}/visibility-audit`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data: VisibilityAuditRecord = await res.json();
+        setLatestAudit(data);
+        setAuditHistory((prev) => [data, ...prev]);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAuditRunning(false);
+    }
   };
 
   const downloadPdf = () => {
@@ -386,6 +424,11 @@ ${advisor.napNotes ? `<div class="section"><div class="section-title">NAP Notes<
           <div className="col-span-2">
             <Field label="License States (comma-separated)" field="licenseStates" value={advisor.licenseStates?.join(", ") ?? ""} placeholder="TX, CA, AZ" />
           </div>
+          <Field label="Title" field="title" value={advisor.title} placeholder="e.g. Mortgage Advisor" />
+          <Field label="Category" field="category" value={advisor.category} placeholder="e.g. Mortgage Lender" />
+          <div className="col-span-2">
+            <Field label="Service Area" field="serviceArea" value={advisor.serviceArea} placeholder="e.g. Oklahoma City, OK" />
+          </div>
         </div>
         {/* Status toggle */}
         <div>
@@ -452,6 +495,126 @@ ${advisor.napNotes ? `<div class="section"><div class="section-title">NAP Notes<
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Visibility Audit */}
+      <div className="mt-4 rounded-lg p-4 space-y-3" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] font-semibold uppercase" style={{ color: "#858889", letterSpacing: "0.12em" }}>Visibility Audit</div>
+          {latestAudit?.score != null && (
+            <span
+              className="rounded-full px-2.5 py-[2px] text-[11px] font-bold"
+              style={{
+                background: latestAudit.score >= 80 ? "#22c55e1a" : latestAudit.score >= 60 ? "#f59e0b1a" : "#ef44441a",
+                color: latestAudit.score >= 80 ? "#86efac" : latestAudit.score >= 60 ? "#fbbf24" : "#fca5a5",
+                border: `1px solid ${latestAudit.score >= 80 ? "#22c55e44" : latestAudit.score >= 60 ? "#f59e0b44" : "#ef444444"}`,
+              }}
+            >
+              Score: {latestAudit.score}/100
+            </span>
+          )}
+        </div>
+        <p className="text-[11.5px]" style={{ color: "#a8aaab" }}>
+          Run an AI-powered audit of this advisor&apos;s online presence and NAP consistency.
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={runAudit}
+            disabled={auditRunning}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+            style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
+          >
+            {auditRunning ? "Analyzing…" : "🔍 Run Full Visibility Audit"}
+          </button>
+          {latestAudit?.status === "COMPLETE" && (
+            <a
+              href={`/api/advisors/${advisor.id}/visibility-audit/${latestAudit.id}/pdf`}
+              target="_blank"
+              rel="noopener"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition hover:brightness-110"
+              style={{ background: "#14375a", color: "#a8aaab", border: "1px solid #1d4368" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download PDF Report
+            </a>
+          )}
+        </div>
+
+        {/* Top action items from latest audit */}
+        {latestAudit?.status === "COMPLETE" && latestAudit.actionItems && latestAudit.actionItems.length > 0 && (
+          <div className="mt-2">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Top Action Items</div>
+            <div className="space-y-1">
+              {latestAudit.actionItems.slice(0, 5).map((item, i) => (
+                <div key={i} className="flex items-start gap-2 rounded-md px-2.5 py-2" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+                  <span
+                    className="shrink-0 grid place-items-center rounded text-[9px] font-bold"
+                    style={{
+                      width: 18, height: 18,
+                      background: item.priority <= 3 ? "#dc262622" : item.priority <= 7 ? "#d9770622" : "#16a34a22",
+                      color: item.priority <= 3 ? "#fca5a5" : item.priority <= 7 ? "#fbbf24" : "#86efac",
+                      border: `1px solid ${item.priority <= 3 ? "#dc262644" : item.priority <= 7 ? "#d9770644" : "#16a34a44"}`,
+                    }}
+                  >
+                    {item.priority}
+                  </span>
+                  <div className="min-w-0">
+                    <span className="text-[10.5px] font-semibold" style={{ color: "#5bcbf5" }}>[{item.platform}] </span>
+                    <span className="text-[10.5px]" style={{ color: "#cbd5e1" }}>{item.action}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Audit history */}
+        {auditHistory.length > 0 && (
+          <div className="mt-2">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>Audit History</div>
+            <div className="space-y-1">
+              {auditHistory.map((a) => (
+                <div key={a.id} className="flex items-center justify-between rounded-md px-2.5 py-1.5" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+                  <span className="text-[11px]" style={{ color: "#a8aaab" }}>
+                    {new Date(a.createdAt).toLocaleDateString()}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {a.score != null && (
+                      <span
+                        className="rounded-full px-2 py-[1px] text-[10px] font-bold"
+                        style={{
+                          background: a.score >= 80 ? "#22c55e1a" : a.score >= 60 ? "#f59e0b1a" : "#ef44441a",
+                          color: a.score >= 80 ? "#86efac" : a.score >= 60 ? "#fbbf24" : "#fca5a5",
+                        }}
+                      >
+                        {a.score}/100
+                      </span>
+                    )}
+                    <span
+                      className="rounded-full px-2 py-[1px] text-[10px]"
+                      style={{ color: a.status === "COMPLETE" ? "#86efac" : a.status === "RUNNING" ? "#fbbf24" : "#5d6566" }}
+                    >
+                      {a.status}
+                    </span>
+                    {a.status === "COMPLETE" && (
+                      <a
+                        href={`/api/advisors/${advisor.id}/visibility-audit/${a.id}/pdf`}
+                        target="_blank"
+                        rel="noopener"
+                        className="text-[10px] transition hover:opacity-80"
+                        style={{ color: "#5bcbf5" }}
+                      >
+                        PDF
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Onboarding checklist */}

@@ -498,13 +498,17 @@ model Advisor {
   socialToolUrl String?
   napFormUrl    String?
   napNotes      String?
+  title         String?
+  category      String?
+  serviceArea   String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  channels AdvisorChannel[]
-  audits   AdvisorAudit[]
-  issues   AdvisorIssue[]
-  team     Team?           @relation(fields: [teamId], references: [id])
+  channels        AdvisorChannel[]
+  audits          AdvisorAudit[]
+  issues          AdvisorIssue[]
+  visibilityAudits VisibilityAudit[]
+  team            Team?           @relation(fields: [teamId], references: [id])
 }
 
 model AdvisorChannel {
@@ -562,6 +566,22 @@ model AdvisorIssue {
   advisor Advisor       @relation(fields: [advisorId], references: [id], onDelete: Cascade)
   audit   AdvisorAudit? @relation(fields: [auditId], references: [id])
   owner   User?         @relation(fields: [ownerId], references: [id])
+}
+
+model VisibilityAudit {
+  id              String    @id @default(cuid())
+  advisorId       String
+  status          String    @default("PENDING")
+  score           Int?
+  scoreBreakdown  Json?
+  actionItems     Json?
+  conflicts       Json?
+  socials         Json?
+  queryVisibility Json?
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  advisor Advisor @relation(fields: [advisorId], references: [id], onDelete: Cascade)
 }
 
 model Idea {

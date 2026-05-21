@@ -18,6 +18,7 @@ export default async function AdvisorsPage() {
       include: {
         channels: true,
         issues: { where: { status: "OPEN" } },
+        visibilityAudits: { orderBy: { createdAt: "desc" }, take: 1 },
       },
       orderBy: { name: "asc" },
     });
@@ -46,6 +47,9 @@ export default async function AdvisorsPage() {
       socialToolUrl: a.socialToolUrl,
       napFormUrl: a.napFormUrl,
       napNotes: a.napNotes,
+      title: a.title,
+      category: a.category,
+      serviceArea: a.serviceArea,
       status: a.status,
       channels: a.channels.map((c) => ({
         id: c.id,
@@ -54,6 +58,14 @@ export default async function AdvisorsPage() {
         label: c.label,
       })),
       openIssues: a.issues.length,
+      visibilityAudits: a.visibilityAudits.map((va) => ({
+        id: va.id,
+        status: va.status,
+        score: va.score,
+        createdAt: va.createdAt.toISOString(),
+        completedAt: va.completedAt?.toISOString() ?? null,
+        actionItems: va.actionItems as Array<{ priority: number; platform: string; action: string; url?: string }> | null,
+      })),
     }));
 
     leaders = Array.from(new Set(rawAdvisors.map((a) => a.leader).filter(Boolean) as string[])).sort();
