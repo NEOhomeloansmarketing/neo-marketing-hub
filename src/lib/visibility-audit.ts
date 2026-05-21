@@ -1,6 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+export interface ExtractedNap {
+  name?: string;
+  teamName?: string;
+  title?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  category?: string;
+  serviceArea?: string;
+  primaryUrl?: string;
+  nmlsNumber?: string;
+}
+
 export interface AuditResult {
+  extractedNap: ExtractedNap;
   score: number;
   scoreBreakdown: {
     listingsHealth: { score: number; max: 30; notes: string };
@@ -31,7 +45,7 @@ export interface AuditResult {
   };
 }
 
-interface AdvisorData {
+export interface AdvisorData {
   name: string;
   nmlsNumber: string;
   email?: string | null;
@@ -43,79 +57,113 @@ interface AdvisorData {
   title?: string | null;
   category?: string | null;
   serviceArea?: string | null;
+  napFormUrl?: string | null;
   channels: Array<{ platform: string; url: string; label?: string | null }>;
+}
+
+async function fetchNapFormAsBase64(url: string): Promise<{ data: string; mediaType: string } | null> {
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+
+    const contentType = res.headers.get("content-type") ?? "";
+    const buffer = await res.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+
+    if (contentType.includes("pdf") || url.toLowerCase().endsWith(".pdf")) {
+      return { data: base64, mediaType: "application/pdf" };
+    }
+    if (contentType.includes("png") || url.toLowerCase().endsWith(".png")) {
+      return { data: base64, mediaType: "image/png" };
+    }
+    if (contentType.includes("webp") || url.toLowerCase().endsWith(".webp")) {
+      return { data: base64, mediaType: "image/webp" };
+    }
+    if (contentType.includes("image") || /\.(jpg|jpeg)$/i.test(url)) {
+      return { data: base64, mediaType: "image/jpeg" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function runVisibilityAudit(advisor: AdvisorData): Promise<AuditResult> {
   const client = new Anthropic();
 
-  const fullAddress = [advisor.streetAddress, advisor.city, advisor.state, advisor.zip]
-    .filter(Boolean)
-    .join(", ");
-
-  const canonicalNap = [
-    `Name: ${advisor.name}`,
-    advisor.title ? `Title: ${advisor.title}` : null,
-    advisor.category ? `Category: ${advisor.category}` : null,
-    `NMLS #: ${advisor.nmlsNumber}`,
-    fullAddress ? `Address: ${fullAddress}` : null,
-    advisor.phone ? `Phone: ${advisor.phone}` : null,
-    advisor.email ? `Email: ${advisor.email}` : null,
-    advisor.serviceArea ? `Primary Service Area: ${advisor.serviceArea}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const napForm = advisor.napFormUrl ? await fetchNapFormAsBase64(advisor.napFormUrl) : null;
 
   const knownProfiles = advisor.channels.length
-    ? advisor.channels
-        .map((c) => `- ${c.platform}: ${c.url}${c.label ? ` (${c.label})` : ""}`)
-        .join("\n")
-    : "No social profiles on record.";
+    ? advisor.channels.map((c) => `- ${c.platform}: ${c.url}${c.label ? ` (${c.label})` : ""}`).join("\n")
+    : "No social profiles on record yet.";
 
-  // Check which major platforms are missing
   const presentPlatforms = advisor.channels.map((c) => c.platform.toUpperCase());
   const majorPlatforms = ["WEBSITE", "GOOGLE_BUSINESS", "FACEBOOK", "INSTAGRAM", "LINKEDIN", "ZILLOW", "YOUTUBE", "YELP"];
   const missingPlatforms = majorPlatforms.filter((p) => !presentPlatforms.includes(p));
 
-  const prompt = `You are an expert digital visibility auditor for mortgage professionals at NEO Home Loans.
+  const fallbackAddress = [advisor.streetAddress, advisor.city, advisor.state, advisor.zip].filter(Boolean).join(", ");
+  const fallbackNap = [
+    `Name: ${advisor.name}`,
+    advisor.title ? `Title: ${advisor.title}` : null,
+    advisor.category ? `Category: ${advisor.category}` : null,
+    `NMLS #: ${advisor.nmlsNumber}`,
+    fallbackAddress ? `Address: ${fallbackAddress}` : null,
+    advisor.phone ? `Phone: ${advisor.phone}` : null,
+    advisor.email ? `Email: ${advisor.email}` : null,
+    advisor.serviceArea ? `Primary Service Area: ${advisor.serviceArea}` : null,
+  ].filter(Boolean).join("\n");
 
-## CANONICAL NAP — This is what should appear EVERYWHERE online:
-${canonicalNap}
+  const textPrompt = `You are an expert digital visibility auditor for mortgage professionals at NEO Home Loans.
+
+${napForm
+    ? `The attached document is this advisor's NAP (Name, Address, Phone) form — it defines the CANONICAL information that must appear identically everywhere online. Extract the canonical NAP data from this form first, then use it as the source of truth for the entire audit.`
+    : `No NAP form has been uploaded yet. Use the following profile data as the canonical NAP:\n${fallbackNap}`
+}
 
 ## KNOWN ONLINE PROFILES ON RECORD:
 ${knownProfiles}
 
-## PLATFORMS NOT YET ON RECORD (may be missing or unverified):
-${missingPlatforms.join(", ") || "All major platforms accounted for"}
+## PLATFORMS NOT YET ON RECORD (may be missing or need to be created):
+${missingPlatforms.length ? missingPlatforms.join(", ") : "All major platforms accounted for"}
 
 ## YOUR TASK:
-Produce a thorough, realistic visibility audit for this mortgage advisor. Analyze:
+Perform a comprehensive visibility audit comparing each known profile against the canonical NAP. Flag every discrepancy:
 
-1. NAP consistency — Are their name, address, phone, email, and title likely consistent everywhere? Flag any common issues (old employer branding, phone number variants, address suite number discrepancies, capitalization of "NEO")
-2. Duplicate/stale profiles — Old company profiles that should be removed
-3. Missing high-authority platforms — Google Business Profile, Zillow, BBB, Bing Places, Apple Maps, Yelp, Experience.com
-4. Profile completeness — Are known profiles fully filled out with correct info?
-5. Review presence — Are they collecting reviews on the right platforms?
-6. Website local SEO — Do they have service area pages, local keywords, schema markup?
-7. AI search readiness — Entity clarity, FAQ content, citation signals for AI-powered search
+1. NAP inconsistencies — wrong phone, old address, old suite number, name variations, "NEO" not fully capitalized (always "NEO Home Loans")
+2. Old employer branding — previous company names/logos/URLs still showing (Cornerstone, Academy, loanDepot, etc.)
+3. Duplicate or conflicting profiles — multiple LinkedIn accounts, old Instagram handles, stale YouTube channels
+4. Incomplete profiles — missing bio, photo, hours, categories, contact info
+5. Missing high-authority platforms — Google Business Profile, Zillow, BBB, Bing Places, Apple Maps, Experience.com
+6. Review platform gaps
+7. Website local SEO — service area pages, local keywords, schema markup
+8. AI search readiness — clear canonical entity signals, FAQ content, structured data
 
-## SCORING RUBRIC (be realistic and conservative — only award full points with clear evidence):
-- Listings Health /30: GMB completeness, Zillow/Yelp/BBB presence, NAP consistency
-- Reviews /20: review count, recency, response rate, cross-platform sentiment
+## SCORING (be realistic and conservative — only award full points with clear evidence):
+- Listings Health /30: NAP consistency across directories, GMB/Zillow/BBB/Experience presence
+- Reviews /20: review volume, recency, platform diversity, response rate
 - Website Local Relevance /20: local keywords, service area pages, schema, mobile
-- Brand Consistency /15: consistent name/photo/bio, no old employer branding
-- AI Search Readiness /15: entity clarity, structured data, FAQ content, citation signals
+- Brand Consistency /15: identical name/title/photo/employer everywhere, no legacy branding
+- AI Search Readiness /15: clear canonical entity signals, FAQ content, structured data
 
-## IMPORTANT:
-- Generate 8-14 specific, actionable items in priority order
-- Be specific about what platform and exactly what needs to change
-- Flag any old/duplicate social accounts that need to be removed
-- Note any NEO branding issues (always "NEO Home Loans" with all caps NEO)
-- For missing platforms, include them as action items to join/create
+Generate 8–14 specific, actionable items in priority order (1 = most urgent).
 
-Return ONLY raw JSON (no markdown, no code fences, no explanation):
+Return ONLY raw JSON — no markdown, no code fences, no explanation:
 
 {
+  "extractedNap": {
+    "name": "<full name>",
+    "teamName": "<team name if any, else empty string>",
+    "title": "<job title>",
+    "address": "<full canonical address>",
+    "phone": "<canonical phone number>",
+    "email": "<canonical email>",
+    "category": "<business category>",
+    "serviceArea": "<primary service area>",
+    "primaryUrl": "<primary website URL>",
+    "nmlsNumber": "<NMLS number>"
+  },
   "score": <0-100>,
   "scoreBreakdown": {
     "listingsHealth": { "score": <number>, "max": 30, "notes": "<2-3 sentences>" },
@@ -129,27 +177,47 @@ Return ONLY raw JSON (no markdown, no code fences, no explanation):
   ],
   "conflicts": ["<specific conflict or inconsistency found>"],
   "socials": [
-    { "platform": "<name>", "url": "<url>", "status": "OK|ISSUE|REMOVE|MISSING", "notes": "<what to fix if needed>" }
+    { "platform": "<name>", "url": "<url>", "status": "OK|ISSUE|REMOVE|MISSING", "notes": "<what needs fixing>" }
   ],
   "queryVisibility": {
-    "branded": "<assessment of branded search visibility>",
-    "nonBranded": "<assessment of local/non-branded search visibility>",
+    "branded": "<branded search visibility assessment>",
+    "nonBranded": "<local/non-branded search visibility assessment>",
     "topicClusters": ["<relevant topic>"],
-    "missedOpportunities": ["<specific missed search opportunity>"],
+    "missedOpportunities": ["<specific missed query opportunity>"],
     "serviceAreaExpansion": "<service area expansion opportunities>"
   }
 }`;
 
+  const messageContent: Anthropic.Messages.ContentBlockParam[] = [];
+
+  if (napForm) {
+    if (napForm.mediaType === "application/pdf") {
+      messageContent.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: napForm.data },
+      } as Anthropic.Messages.ContentBlockParam);
+    } else {
+      messageContent.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: napForm.mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+          data: napForm.data,
+        },
+      } as Anthropic.Messages.ContentBlockParam);
+    }
+  }
+
+  messageContent.push({ type: "text", text: textPrompt });
+
   const message = await client.messages.create({
     model: "claude-sonnet-4-5",
     max_tokens: 4096,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content: messageContent }],
   });
 
-  const responseText =
-    message.content[0].type === "text" ? message.content[0].text : "";
+  const responseText = message.content[0].type === "text" ? message.content[0].text : "";
 
-  // Strip any accidental markdown wrapping
   let jsonStr = responseText.trim();
   const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) jsonStr = jsonMatch[1].trim();

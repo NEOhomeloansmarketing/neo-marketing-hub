@@ -573,6 +573,7 @@ model VisibilityAudit {
   advisorId       String
   status          String    @default("PENDING")
   score           Int?
+  extractedNap    Json?
   scoreBreakdown  Json?
   actionItems     Json?
   conflicts       Json?

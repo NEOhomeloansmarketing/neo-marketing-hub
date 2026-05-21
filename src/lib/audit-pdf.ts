@@ -122,37 +122,28 @@ export async function generateAuditPdf(
     drawLine(doc, y);
     y += 12;
 
-    // ── Canonical Entity Block ───────────────────────────────────────────────
-    doc
-      .fillColor(GRAY_TEXT)
-      .font("Helvetica-Bold")
-      .fontSize(8)
-      .text("CANONICAL ENTITY", 40, y);
+    // ── Canonical Entity Block (from extracted NAP form) ────────────────────
+    doc.fillColor(GRAY_TEXT).font("Helvetica-Bold").fontSize(8).text("CANONICAL ENTITY", 40, y);
     y += 12;
-
     doc.rect(40, y, 515, 2).fill(NAVY);
     y += 8;
 
+    const nap = result.extractedNap ?? {};
     const napLines = [
-      `Name: ${advisor.name}`,
-      advisor.title ? `Title: ${advisor.title}` : null,
-      advisor.nmlsNumber ? `NMLS #: ${advisor.nmlsNumber}` : null,
-      advisor.category ? `Category: ${advisor.category}` : null,
-      [advisor.streetAddress, advisor.city, advisor.state, advisor.zip]
-        .filter(Boolean)
-        .join(", ") || null,
-      advisor.phone ? `Phone: ${advisor.phone}` : null,
-      advisor.email ? `Email: ${advisor.email}` : null,
-      advisor.serviceArea ? `Service Area: ${advisor.serviceArea}` : null,
+      nap.name ? `N [name] — ${nap.name}${nap.teamName ? ` | ${nap.teamName}` : ""}` : `Name: ${advisor.name}`,
+      nap.address ? `A [address] — ${nap.address}` : null,
+      nap.phone ? `P [phone] — ${nap.phone}` : advisor.phone ? `P [phone] — ${advisor.phone}` : null,
+      nap.email ? `Email — ${nap.email}` : advisor.email ? `Email — ${advisor.email}` : null,
+      nap.title ? `Title — ${nap.title}` : advisor.title ? `Title — ${advisor.title}` : null,
+      nap.category ? `Category — ${nap.category}` : null,
+      nap.serviceArea ? `Primary Service Area — ${nap.serviceArea}` : null,
+      nap.primaryUrl ? `Primary URL — ${nap.primaryUrl}` : null,
+      (nap.nmlsNumber ?? advisor.nmlsNumber) ? `NMLS # — ${nap.nmlsNumber ?? advisor.nmlsNumber}` : null,
     ].filter(Boolean) as string[];
 
     for (const line of napLines) {
-      doc
-        .fillColor(NAVY)
-        .font("Helvetica")
-        .fontSize(9)
-        .text(`• ${line}`, 48, y);
-      y += 13;
+      doc.fillColor(NAVY).font("Helvetica").fontSize(9).text(`• ${line}`, 48, y, { width: 490 });
+      y += 14;
     }
     y += 6;
     drawLine(doc, y);

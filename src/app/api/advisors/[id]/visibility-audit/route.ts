@@ -42,6 +42,7 @@ export async function POST(
       title: advisor.title,
       category: advisor.category,
       serviceArea: advisor.serviceArea,
+      napFormUrl: advisor.napFormUrl,
       channels: advisor.channels.map((c) => ({
         platform: c.platform,
         url: c.url,
@@ -55,6 +56,7 @@ export async function POST(
       data: {
         status: "COMPLETE",
         score: result.score,
+        extractedNap: result.extractedNap as object,
         scoreBreakdown: result.scoreBreakdown as object,
         actionItems: result.actionItems as object,
         conflicts: result.conflicts as object,

@@ -34,6 +34,7 @@ export async function GET(
   }
 
   const result: AuditResult = {
+    extractedNap: (audit.extractedNap ?? {}) as AuditResult["extractedNap"],
     score: audit.score ?? 0,
     scoreBreakdown: audit.scoreBreakdown as AuditResult["scoreBreakdown"],
     actionItems: (audit.actionItems ?? []) as AuditResult["actionItems"],
