@@ -81,14 +81,24 @@ export async function POST(
 
     // Create tasks for each action item
     for (const item of result.actionItems) {
-      const title = `[${item.platform}] — ${item.action}`.slice(0, 120);
       const priority =
         item.priority <= 3 ? "HIGH" : item.priority <= 7 ? "MEDIUM" : "LOW";
+
+      // Title: [AdvisorName] [Platform] — action (truncated cleanly)
+      const prefix = `${advisor.name} · ${item.platform} — `;
+      const maxAction = 140 - prefix.length;
+      const title = `${prefix}${item.action.slice(0, maxAction)}`;
+
+      const descLines = [
+        `Visibility audit action item for ${advisor.name} (NMLS ${advisor.nmlsNumber}).`,
+        item.url ? `URL: ${item.url}` : null,
+        `Priority #${item.priority} from audit on ${new Date().toLocaleDateString()}.`,
+      ].filter(Boolean).join("\n");
 
       await db.task.create({
         data: {
           title,
-          description: `Visibility audit action item for ${advisor.name} (NMLS ${advisor.nmlsNumber})`,
+          description: descLines,
           priority: priority as "HIGH" | "MEDIUM" | "LOW",
           status: "TODO",
           ownerId: colin?.id ?? user.id,
