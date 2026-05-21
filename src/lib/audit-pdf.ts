@@ -1,4 +1,5 @@
-import type PDFDocumentType from "pdfkit";
+import { PDFDocument, StandardFonts, rgb, PageSizes } from "pdf-lib";
+import type { PDFFont, PDFPage } from "pdf-lib";
 import type { AuditResult } from "./visibility-audit";
 
 interface AdvisorInfo {
@@ -15,42 +16,121 @@ interface AdvisorInfo {
   serviceArea?: string | null;
 }
 
-const NAVY = "#0b1f35";
-const GOLD_BG = "#f59e0b";
-const LIGHT_GRAY = "#f8fafc";
-const GRAY_TEXT = "#64748b";
-const BORDER = "#e2e8f0";
-const WHITE = "#ffffff";
+type RgbColor = ReturnType<typeof rgb>;
 
-function scoreColor(score: number): string {
-  if (score >= 80) return "#16a34a"; // green
-  if (score >= 60) return "#d97706"; // orange
-  return "#dc2626"; // red
+// ── Colors ────────────────────────────────────────────────────────────────────
+const C = {
+  navy:   rgb(11 / 255,  31 / 255,  53 / 255),   // #0b1f35
+  gold:   rgb(245 / 255, 158 / 255, 11 / 255),   // #f59e0b
+  white:  rgb(1, 1, 1),
+  gray:   rgb(100 / 255, 116 / 255, 139 / 255),  // #64748b
+  lgray:  rgb(248 / 255, 250 / 252, 252 / 255),  // #f8fafc
+  border: rgb(226 / 255, 232 / 255, 240 / 255),  // #e2e8f0
+  green:  rgb(22 / 255,  163 / 255, 74 / 255),   // #16a34a
+  orange: rgb(217 / 255, 119 / 255, 6 / 255),    // #d97706
+  red:    rgb(220 / 255, 38 / 255,  38 / 255),   // #dc2626
+  lblue:  rgb(91 / 255,  203 / 255, 245 / 255),  // #5bcbf5
+};
+
+const PAGE_W = 612;
+const PAGE_H = 792;
+const MARGIN = 40;
+const CONTENT_W = PAGE_W - MARGIN * 2; // 532
+
+function scoreColor(score: number): RgbColor {
+  if (score >= 80) return C.green;
+  if (score >= 60) return C.orange;
+  return C.red;
 }
 
-function scoreLabel(score: number): string {
-  if (score >= 80) return "STRONG";
-  if (score >= 60) return "NEEDS WORK";
-  return "CRITICAL";
+// pdf-lib y=0 is bottom-left. Convert "y from top" to pdf-lib's y.
+// `size` = the font size, so text baseline sits at top + size.
+function pdfY(topY: number, size = 0): number {
+  return PAGE_H - topY - size;
 }
 
-function drawSectionHeader(
-  doc: PDFKit.PDFDocument,
-  title: string,
-  y: number
-): number {
-  // Gold/amber background bar
-  doc.rect(40, y, 515, 22).fill(GOLD_BG);
-  doc
-    .fillColor(NAVY)
-    .font("Helvetica-Bold")
-    .fontSize(9)
-    .text(title.toUpperCase(), 48, y + 7, { width: 500 });
-  return y + 30;
+// Split text into lines that fit maxWidth
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of String(text ?? "").split("\n")) {
+    const words = paragraph.split(" ").filter(Boolean);
+    if (!words.length) { lines.push(""); continue; }
+    let line = "";
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(test, size) > maxWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines : [""];
 }
 
-function drawLine(doc: PDFKit.PDFDocument, y: number): void {
-  doc.moveTo(40, y).lineTo(555, y).strokeColor(BORDER).lineWidth(0.5).stroke();
+// Mutable render context
+interface Ctx {
+  doc: PDFDocument;
+  page: PDFPage;
+  y: number;           // cursor — y from top
+  regular: PDFFont;
+  bold: PDFFont;
+}
+
+function newPage(ctx: Ctx): void {
+  ctx.page = ctx.doc.addPage(PageSizes.Letter);
+  ctx.y = MARGIN;
+}
+
+function ensureSpace(ctx: Ctx, needed: number): void {
+  if (ctx.y + needed > PAGE_H - MARGIN) newPage(ctx);
+}
+
+function fillRect(ctx: Ctx, x: number, topY: number, w: number, h: number, color: RgbColor): void {
+  ctx.page.drawRectangle({ x, y: pdfY(topY + h), width: w, height: h, color });
+}
+
+function hRule(ctx: Ctx): void {
+  ctx.page.drawLine({
+    start: { x: MARGIN, y: pdfY(ctx.y) },
+    end:   { x: PAGE_W - MARGIN, y: pdfY(ctx.y) },
+    thickness: 0.5,
+    color: C.border,
+  });
+  ctx.y += 10;
+}
+
+function sectionHeader(ctx: Ctx, title: string): void {
+  ensureSpace(ctx, 32);
+  fillRect(ctx, MARGIN, ctx.y, CONTENT_W, 22, C.gold);
+  ctx.page.drawText(title.toUpperCase(), {
+    x: MARGIN + 8,
+    y: pdfY(ctx.y + 15),
+    font: ctx.bold,
+    size: 9,
+    color: C.navy,
+  });
+  ctx.y += 30;
+}
+
+// Draw text at cursor (ctx.y), advance cursor
+function text(
+  ctx: Ctx,
+  str: string,
+  x: number,
+  font: PDFFont,
+  size: number,
+  color: RgbColor,
+  maxWidth?: number
+): void {
+  const lines = maxWidth ? wrapText(str, font, size, maxWidth) : [str];
+  for (const line of lines) {
+    ensureSpace(ctx, size * 1.5);
+    ctx.page.drawText(line, { x, y: pdfY(ctx.y + size), font, size, color });
+    ctx.y += Math.round(size * 1.45);
+  }
 }
 
 export async function generateAuditPdf(
@@ -58,364 +138,324 @@ export async function generateAuditPdf(
   advisor: AdvisorInfo,
   auditDate: Date
 ): Promise<Buffer> {
-  // Dynamic require keeps pdfkit out of the webpack bundle on Vercel
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const PDFDocument = require("pdfkit") as typeof PDFDocumentType;
+  const doc      = await PDFDocument.create();
+  const regular  = await doc.embedFont(StandardFonts.Helvetica);
+  const bold     = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  // Null-safe defaults so a partial audit never crashes the generator
+  const ctx: Ctx = { doc, page: doc.addPage(PageSizes.Letter), y: MARGIN, regular, bold };
+
+  // ── Null-safe defaults ────────────────────────────────────────────────────
   const scoreBreakdown = result.scoreBreakdown ?? {
-    listingsHealth:         { score: 0, max: 30, notes: "No data" },
-    reviews:                { score: 0, max: 20, notes: "No data" },
-    websiteLocalRelevance:  { score: 0, max: 20, notes: "No data" },
-    brandConsistency:       { score: 0, max: 15, notes: "No data" },
-    aiSearchReadiness:      { score: 0, max: 15, notes: "No data" },
+    listingsHealth:        { score: 0, max: 30, notes: "No data available." },
+    reviews:               { score: 0, max: 20, notes: "No data available." },
+    websiteLocalRelevance: { score: 0, max: 20, notes: "No data available." },
+    brandConsistency:      { score: 0, max: 15, notes: "No data available." },
+    aiSearchReadiness:     { score: 0, max: 15, notes: "No data available." },
   };
   const queryVisibility = result.queryVisibility ?? {
-    branded: "",
-    nonBranded: "",
-    topicClusters: [],
-    missedOpportunities: [],
-    serviceAreaExpansion: "",
+    branded: "", nonBranded: "",
+    topicClusters: [], missedOpportunities: [], serviceAreaExpansion: "",
   };
-  const actionItems  = result.actionItems  ?? [];
-  const conflicts    = result.conflicts    ?? [];
-  const socials      = result.socials      ?? [];
+  const actionItems = result.actionItems ?? [];
+  const conflicts   = result.conflicts   ?? [];
+  const socials     = result.socials     ?? [];
+  const score       = result.score       ?? 0;
 
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: "LETTER",
-      margins: { top: 40, bottom: 40, left: 40, right: 40 },
+  // ── Header bar ────────────────────────────────────────────────────────────
+  fillRect(ctx, 0, 0, PAGE_W, 70, C.navy);
+  ctx.page.drawText("NEO Marketing Hub", {
+    x: MARGIN, y: pdfY(26),
+    font: bold, size: 16, color: C.white,
+  });
+  ctx.page.drawText("Powered by NEO", {
+    x: MARGIN, y: pdfY(44),
+    font: regular, size: 9, color: C.lblue,
+  });
+  const dateStr = auditDate.toLocaleDateString("en-US", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+  const dateW = regular.widthOfTextAtSize(dateStr, 9);
+  ctx.page.drawText(dateStr, {
+    x: PAGE_W - MARGIN - dateW, y: pdfY(44),
+    font: regular, size: 9, color: C.white,
+  });
+
+  ctx.y = 82;
+
+  // ── Score headline ────────────────────────────────────────────────────────
+  const sColor = scoreColor(score);
+  const sLabel = score >= 80 ? "STRONG" : score >= 60 ? "NEEDS WORK" : "CRITICAL";
+
+  ctx.page.drawText(advisor.name, {
+    x: MARGIN, y: pdfY(ctx.y + 18),
+    font: bold, size: 18, color: C.navy,
+  });
+  ctx.y += 26;
+
+  const prefix = "Online Trust Score:  ";
+  ctx.page.drawText(prefix, {
+    x: MARGIN, y: pdfY(ctx.y + 14),
+    font: bold, size: 14, color: C.navy,
+  });
+  const prefixW = bold.widthOfTextAtSize(prefix, 14);
+  ctx.page.drawText(`${score}/100`, {
+    x: MARGIN + prefixW, y: pdfY(ctx.y + 14),
+    font: bold, size: 14, color: sColor,
+  });
+
+  // Badge
+  fillRect(ctx, 420, ctx.y - 2, 135, 26, sColor);
+  const lblW = bold.widthOfTextAtSize(sLabel, 12);
+  ctx.page.drawText(sLabel, {
+    x: 420 + (135 - lblW) / 2, y: pdfY(ctx.y + 16),
+    font: bold, size: 12, color: C.white,
+  });
+  ctx.y += 36;
+  hRule(ctx);
+
+  // ── Canonical Entity ──────────────────────────────────────────────────────
+  ctx.page.drawText("CANONICAL ENTITY", {
+    x: MARGIN, y: pdfY(ctx.y + 8),
+    font: bold, size: 8, color: C.gray,
+  });
+  ctx.y += 12;
+  fillRect(ctx, MARGIN, ctx.y, CONTENT_W, 2, C.navy);
+  ctx.y += 8;
+
+  const nap = result.extractedNap ?? {};
+  const napLines = [
+    nap.name
+      ? `N [name] — ${nap.name}${nap.teamName ? ` | ${nap.teamName}` : ""}`
+      : `Name: ${advisor.name}`,
+    nap.address ?? null,
+    nap.phone ?? advisor.phone ? `P [phone] — ${nap.phone ?? advisor.phone}` : null,
+    nap.email ?? advisor.email ? `Email — ${nap.email ?? advisor.email}` : null,
+    nap.title ?? advisor.title ? `Title — ${nap.title ?? advisor.title}` : null,
+    nap.category ? `Category — ${nap.category}` : null,
+    nap.serviceArea ? `Primary Service Area — ${nap.serviceArea}` : null,
+    nap.primaryUrl  ? `Primary URL — ${nap.primaryUrl}` : null,
+    nap.nmlsNumber ?? advisor.nmlsNumber
+      ? `NMLS # — ${nap.nmlsNumber ?? advisor.nmlsNumber}`
+      : null,
+  ].filter(Boolean) as string[];
+
+  for (const line of napLines) {
+    text(ctx, `• ${line}`, MARGIN + 8, regular, 9, C.navy, CONTENT_W - 8);
+  }
+  ctx.y += 6;
+  hRule(ctx);
+
+  // ── Priority Action Plan ──────────────────────────────────────────────────
+  sectionHeader(ctx, "Priority Action Plan");
+
+  for (const item of actionItems.slice(0, 12)) {
+    ensureSpace(ctx, 32);
+    const bColor = item.priority <= 3 ? C.red : item.priority <= 7 ? C.orange : C.green;
+    fillRect(ctx, MARGIN, ctx.y, 18, 15, bColor);
+    const numStr = String(item.priority);
+    ctx.page.drawText(numStr, {
+      x: MARGIN + (18 - bold.widthOfTextAtSize(numStr, 8)) / 2,
+      y: pdfY(ctx.y + 11),
+      font: bold, size: 8, color: C.white,
     });
 
-    const chunks: Buffer[] = [];
-    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
+    const platStr = `[${item.platform}] `;
+    ctx.page.drawText(platStr, {
+      x: MARGIN + 22, y: pdfY(ctx.y + 11),
+      font: bold, size: 9, color: C.navy,
+    });
+    const pW = bold.widthOfTextAtSize(platStr, 9);
 
-    // ── Header ──────────────────────────────────────────────────────────────
-    doc.rect(0, 0, 612, 70).fill(NAVY);
-    doc
-      .fillColor(WHITE)
-      .font("Helvetica-Bold")
-      .fontSize(16)
-      .text("NEO Marketing Hub", 40, 18);
-    doc
-      .fillColor("#5bcbf5")
-      .font("Helvetica")
-      .fontSize(9)
-      .text("Powered by NEO", 40, 38);
-    doc
-      .fillColor(WHITE)
-      .font("Helvetica")
-      .fontSize(9)
-      .text(`Generated: ${auditDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`, 350, 28, {
-        width: 200,
-        align: "right",
+    const actionLines = wrapText(item.action, regular, 9, CONTENT_W - 22 - pW);
+    ctx.page.drawText(actionLines[0], {
+      x: MARGIN + 22 + pW, y: pdfY(ctx.y + 11),
+      font: regular, size: 9, color: C.navy,
+    });
+    ctx.y += 16;
+
+    for (let i = 1; i < actionLines.length; i++) {
+      ensureSpace(ctx, 13);
+      ctx.page.drawText(actionLines[i], {
+        x: MARGIN + 22, y: pdfY(ctx.y + 10),
+        font: regular, size: 9, color: C.navy,
+      });
+      ctx.y += 13;
+    }
+
+    if (item.url) {
+      ensureSpace(ctx, 12);
+      ctx.page.drawText(item.url.slice(0, 90), {
+        x: MARGIN + 22, y: pdfY(ctx.y + 9),
+        font: regular, size: 7, color: C.gray,
+      });
+      ctx.y += 12;
+    }
+    ctx.y += 3;
+  }
+  ctx.y += 4;
+
+  // ── Core Identity Conflicts ───────────────────────────────────────────────
+  if (conflicts.length > 0) {
+    sectionHeader(ctx, "Core Identity Conflicts");
+    for (const c of conflicts) {
+      text(ctx, `• ${c}`, MARGIN + 8, regular, 9, C.navy, CONTENT_W - 8);
+    }
+    ctx.y += 4;
+  }
+
+  // ── Links / Socials ───────────────────────────────────────────────────────
+  if (socials.length > 0) {
+    sectionHeader(ctx, "Links / Socials");
+    const STATUS: Record<string, RgbColor> = {
+      OK: C.green, ISSUE: C.orange, REMOVE: C.red, MISSING: C.gray,
+    };
+    for (const s of socials) {
+      ensureSpace(ctx, 28);
+      const bColor = STATUS[s.status] ?? C.gray;
+      fillRect(ctx, MARGIN, ctx.y, 50, 13, bColor);
+      const sW = bold.widthOfTextAtSize(s.status, 7);
+      ctx.page.drawText(s.status, {
+        x: MARGIN + (50 - sW) / 2, y: pdfY(ctx.y + 10),
+        font: bold, size: 7, color: C.white,
       });
 
-    let y = 85;
-
-    // ── Score headline ───────────────────────────────────────────────────────
-    const color = scoreColor(result.score);
-    const label = scoreLabel(result.score);
-
-    doc
-      .fillColor(NAVY)
-      .font("Helvetica-Bold")
-      .fontSize(18)
-      .text(`${advisor.name}`, 40, y);
-    y += 22;
-
-    doc
-      .fillColor(NAVY)
-      .font("Helvetica-Bold")
-      .fontSize(14)
-      .text("Online Trust Score: ", 40, y, { continued: true });
-    doc.fillColor(color).font("Helvetica-Bold").fontSize(14).text(`${result.score}/100`);
-
-    // Score badge
-    doc.rect(420, y - 4, 135, 28).fill(color);
-    doc
-      .fillColor(WHITE)
-      .font("Helvetica-Bold")
-      .fontSize(12)
-      .text(label, 420, y + 4, { width: 135, align: "center" });
-
-    y += 38;
-    drawLine(doc, y);
-    y += 12;
-
-    // ── Canonical Entity Block (from extracted NAP form) ────────────────────
-    doc.fillColor(GRAY_TEXT).font("Helvetica-Bold").fontSize(8).text("CANONICAL ENTITY", 40, y);
-    y += 12;
-    doc.rect(40, y, 515, 2).fill(NAVY);
-    y += 8;
-
-    const nap = result.extractedNap ?? {};
-    const napLines = [
-      nap.name ? `N [name] — ${nap.name}${nap.teamName ? ` | ${nap.teamName}` : ""}` : `Name: ${advisor.name}`,
-      nap.address ? `A [address] — ${nap.address}` : null,
-      nap.phone ? `P [phone] — ${nap.phone}` : advisor.phone ? `P [phone] — ${advisor.phone}` : null,
-      nap.email ? `Email — ${nap.email}` : advisor.email ? `Email — ${advisor.email}` : null,
-      nap.title ? `Title — ${nap.title}` : advisor.title ? `Title — ${advisor.title}` : null,
-      nap.category ? `Category — ${nap.category}` : null,
-      nap.serviceArea ? `Primary Service Area — ${nap.serviceArea}` : null,
-      nap.primaryUrl ? `Primary URL — ${nap.primaryUrl}` : null,
-      (nap.nmlsNumber ?? advisor.nmlsNumber) ? `NMLS # — ${nap.nmlsNumber ?? advisor.nmlsNumber}` : null,
-    ].filter(Boolean) as string[];
-
-    for (const line of napLines) {
-      doc.fillColor(NAVY).font("Helvetica").fontSize(9).text(`• ${line}`, 48, y, { width: 490 });
-      y += 14;
-    }
-    y += 6;
-    drawLine(doc, y);
-    y += 12;
-
-    // ── Priority Action Plan ─────────────────────────────────────────────────
-    y = drawSectionHeader(doc, "Priority Action Plan", y);
-
-    const items = actionItems.slice(0, 10);
-    for (const item of items) {
-      const priorityColor = item.priority <= 3 ? "#dc2626" : item.priority <= 7 ? "#d97706" : "#16a34a";
-      doc.rect(40, y, 18, 14).fill(priorityColor);
-      doc
-        .fillColor(WHITE)
-        .font("Helvetica-Bold")
-        .fontSize(8)
-        .text(String(item.priority), 40, y + 3, { width: 18, align: "center" });
-
-      doc
-        .fillColor(NAVY)
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text(`[${item.platform}]`, 64, y + 1, { continued: true });
-      doc
-        .fillColor(NAVY)
-        .font("Helvetica")
-        .fontSize(9)
-        .text(` ${item.action}`, { width: 450 });
-
-      if (item.url) {
-        doc
-          .fillColor(GRAY_TEXT)
-          .font("Helvetica")
-          .fontSize(7)
-          .text(`  ${item.url}`, 64, doc.y);
+      ctx.page.drawText(s.platform, {
+        x: MARGIN + 56, y: pdfY(ctx.y + 11),
+        font: bold, size: 9, color: C.navy,
+      });
+      if (s.notes) {
+        const platW = bold.widthOfTextAtSize(s.platform, 9);
+        ctx.page.drawText(` — ${s.notes}`.slice(0, 70), {
+          x: MARGIN + 56 + platW, y: pdfY(ctx.y + 11),
+          font: regular, size: 8, color: C.gray,
+        });
       }
-      y = doc.y + 5;
+      ctx.y += 15;
 
-      if (y > 700) {
-        doc.addPage();
-        y = 40;
+      if (s.url) {
+        ctx.page.drawText(s.url.slice(0, 85), {
+          x: MARGIN + 56, y: pdfY(ctx.y + 9),
+          font: regular, size: 7, color: C.gray,
+        });
+        ctx.y += 12;
       }
+      ctx.y += 3;
     }
-    y += 4;
+    ctx.y += 4;
+  }
 
-    // ── Core Identity Conflicts ──────────────────────────────────────────────
-    if (conflicts.length > 0) {
-      if (y > 650) { doc.addPage(); y = 40; }
-      y = drawSectionHeader(doc, "Core Identity Conflicts", y);
-      for (const conflict of conflicts) {
-        doc
-          .fillColor(NAVY)
-          .font("Helvetica")
-          .fontSize(9)
-          .text(`• ${conflict}`, 48, y, { width: 490 });
-        y = doc.y + 5;
-        if (y > 700) { doc.addPage(); y = 40; }
-      }
-      y += 4;
+  // ── Score Breakdown ───────────────────────────────────────────────────────
+  ensureSpace(ctx, 40);
+  sectionHeader(ctx, "Visibility Score Breakdown");
+
+  const categories = [
+    { label: "Listings Health",         data: scoreBreakdown.listingsHealth },
+    { label: "Reviews",                 data: scoreBreakdown.reviews },
+    { label: "Website Local Relevance", data: scoreBreakdown.websiteLocalRelevance },
+    { label: "Brand Consistency",       data: scoreBreakdown.brandConsistency },
+    { label: "AI Search Readiness",     data: scoreBreakdown.aiSearchReadiness },
+  ];
+
+  for (const cat of categories) {
+    ensureSpace(ctx, 50);
+    const pct = (cat.data.score ?? 0) / (cat.data.max ?? 1);
+    const catColor = scoreColor(Math.round(pct * 100));
+    const barW = Math.round(pct * 200);
+
+    ctx.page.drawText(cat.label, {
+      x: MARGIN, y: pdfY(ctx.y + 10),
+      font: bold, size: 9, color: C.navy,
+    });
+    const lW = bold.widthOfTextAtSize(cat.label, 9);
+    ctx.page.drawText(`  ${cat.data.score}/${cat.data.max}`, {
+      x: MARGIN + lW, y: pdfY(ctx.y + 10),
+      font: bold, size: 9, color: catColor,
+    });
+    ctx.y += 14;
+
+    // Progress bar
+    ctx.page.drawRectangle({ x: MARGIN, y: pdfY(ctx.y + 7), width: 200, height: 6, color: C.lgray });
+    if (barW > 0) {
+      ctx.page.drawRectangle({ x: MARGIN, y: pdfY(ctx.y + 7), width: barW, height: 6, color: catColor });
     }
+    ctx.y += 12;
 
-    // ── Links / Socials ──────────────────────────────────────────────────────
-    if (socials.length > 0) {
-      if (y > 600) { doc.addPage(); y = 40; }
-      y = drawSectionHeader(doc, "Links / Socials", y);
-
-      const statusColors: Record<string, string> = {
-        OK: "#16a34a",
-        ISSUE: "#d97706",
-        REMOVE: "#dc2626",
-        MISSING: "#64748b",
-      };
-
-      for (const social of socials) {
-        const badgeColor = statusColors[social.status] ?? GRAY_TEXT;
-        doc.rect(40, y, 50, 13).fill(badgeColor);
-        doc
-          .fillColor(WHITE)
-          .font("Helvetica-Bold")
-          .fontSize(7)
-          .text(social.status, 40, y + 3, { width: 50, align: "center" });
-
-        doc
-          .fillColor(NAVY)
-          .font("Helvetica-Bold")
-          .fontSize(9)
-          .text(`${social.platform}`, 98, y + 1, { continued: true });
-
-        if (social.notes) {
-          doc
-            .fillColor(GRAY_TEXT)
-            .font("Helvetica")
-            .fontSize(8)
-            .text(` — ${social.notes}`, { width: 400 });
-        } else {
-          doc.text("", { width: 400 });
-        }
-
-        doc
-          .fillColor(GRAY_TEXT)
-          .font("Helvetica")
-          .fontSize(7)
-          .text(`  ${social.url}`, 98, doc.y, { width: 450 });
-
-        y = doc.y + 6;
-        if (y > 700) { doc.addPage(); y = 40; }
-      }
-      y += 4;
+    if (cat.data.notes) {
+      text(ctx, cat.data.notes, MARGIN, regular, 8, C.gray, CONTENT_W);
     }
+    ctx.y += 8;
+  }
 
-    // ── Visibility Score Breakdown ───────────────────────────────────────────
-    if (y > 580) { doc.addPage(); y = 40; }
-    y = drawSectionHeader(doc, "Visibility Score Breakdown", y);
+  // ── Query Visibility Map ──────────────────────────────────────────────────
+  ensureSpace(ctx, 40);
+  sectionHeader(ctx, "Query Visibility Map");
 
-    const categories = [
-      { label: "Listings Health", data: scoreBreakdown.listingsHealth },
-      { label: "Reviews", data: scoreBreakdown.reviews },
-      { label: "Website Local Relevance", data: scoreBreakdown.websiteLocalRelevance },
-      { label: "Brand Consistency", data: scoreBreakdown.brandConsistency },
-      { label: "AI Search Readiness", data: scoreBreakdown.aiSearchReadiness },
-    ];
+  if (queryVisibility.branded) {
+    ctx.page.drawText("Branded Search:", {
+      x: MARGIN, y: pdfY(ctx.y + 10),
+      font: bold, size: 9, color: C.navy,
+    });
+    ctx.y += 14;
+    text(ctx, queryVisibility.branded, MARGIN, regular, 9, C.gray, CONTENT_W);
+    ctx.y += 4;
+  }
 
-    for (const cat of categories) {
-      const pct = cat.data.score / cat.data.max;
-      const barWidth = Math.round(pct * 200);
-      const catColor = scoreColor(Math.round(pct * 100));
+  if (queryVisibility.nonBranded) {
+    ensureSpace(ctx, 20);
+    ctx.page.drawText("Non-Branded Search:", {
+      x: MARGIN, y: pdfY(ctx.y + 10),
+      font: bold, size: 9, color: C.navy,
+    });
+    ctx.y += 14;
+    text(ctx, queryVisibility.nonBranded, MARGIN, regular, 9, C.gray, CONTENT_W);
+    ctx.y += 4;
+  }
 
-      doc
-        .fillColor(NAVY)
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text(`${cat.label}`, 40, y, { continued: true });
-      doc
-        .fillColor(catColor)
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text(`  ${cat.data.score}/${cat.data.max}`);
-
-      // Progress bar background
-      doc.rect(40, y + 12, 200, 6).fill(LIGHT_GRAY).stroke(BORDER);
-      if (barWidth > 0) {
-        doc.rect(40, y + 12, barWidth, 6).fill(catColor);
-      }
-
-      doc
-        .fillColor(GRAY_TEXT)
-        .font("Helvetica")
-        .fontSize(8)
-        .text(cat.data.notes, 40, y + 22, { width: 515 });
-
-      y = doc.y + 10;
-      if (y > 700) { doc.addPage(); y = 40; }
+  if (queryVisibility.topicClusters?.length) {
+    ensureSpace(ctx, 20);
+    ctx.page.drawText("Topic Clusters:", {
+      x: MARGIN, y: pdfY(ctx.y + 10),
+      font: bold, size: 9, color: C.navy,
+    });
+    ctx.y += 14;
+    for (const tc of queryVisibility.topicClusters) {
+      text(ctx, `• ${tc}`, MARGIN + 8, regular, 9, C.gray, CONTENT_W - 8);
     }
-    y += 4;
+    ctx.y += 4;
+  }
 
-    // ── Query Visibility Map ─────────────────────────────────────────────────
-    if (y > 580) { doc.addPage(); y = 40; }
-    y = drawSectionHeader(doc, "Query Visibility Map", y);
-
-    const qv = queryVisibility;
-
-    doc
-      .fillColor(NAVY)
-      .font("Helvetica-Bold")
-      .fontSize(9)
-      .text("Branded Search:", 40, y);
-    doc
-      .fillColor(GRAY_TEXT)
-      .font("Helvetica")
-      .fontSize(9)
-      .text(qv.branded, 40, doc.y + 2, { width: 515 });
-    y = doc.y + 8;
-
-    doc
-      .fillColor(NAVY)
-      .font("Helvetica-Bold")
-      .fontSize(9)
-      .text("Non-Branded Search:", 40, y);
-    doc
-      .fillColor(GRAY_TEXT)
-      .font("Helvetica")
-      .fontSize(9)
-      .text(qv.nonBranded, 40, doc.y + 2, { width: 515 });
-    y = doc.y + 8;
-
-    if (qv.topicClusters && qv.topicClusters.length > 0) {
-      doc
-        .fillColor(NAVY)
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("Topic Clusters:", 40, y);
-      y = doc.y + 3;
-      for (const tc of qv.topicClusters) {
-        doc
-          .fillColor(GRAY_TEXT)
-          .font("Helvetica")
-          .fontSize(9)
-          .text(`• ${tc}`, 48, y, { width: 510 });
-        y = doc.y + 2;
-      }
-      y += 4;
+  if (queryVisibility.missedOpportunities?.length) {
+    ensureSpace(ctx, 20);
+    ctx.page.drawText("Missed Opportunities:", {
+      x: MARGIN, y: pdfY(ctx.y + 10),
+      font: bold, size: 9, color: C.navy,
+    });
+    ctx.y += 14;
+    for (const mo of queryVisibility.missedOpportunities) {
+      text(ctx, `• ${mo}`, MARGIN + 8, regular, 9, C.red, CONTENT_W - 8);
     }
+    ctx.y += 4;
+  }
 
-    if (qv.missedOpportunities && qv.missedOpportunities.length > 0) {
-      doc
-        .fillColor(NAVY)
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("Missed Opportunities:", 40, y);
-      y = doc.y + 3;
-      for (const mo of qv.missedOpportunities) {
-        doc
-          .fillColor("#dc2626")
-          .font("Helvetica")
-          .fontSize(9)
-          .text(`• ${mo}`, 48, y, { width: 510 });
-        y = doc.y + 2;
-      }
-      y += 4;
-    }
+  if (queryVisibility.serviceAreaExpansion) {
+    ensureSpace(ctx, 20);
+    ctx.page.drawText("Service Area Expansion:", {
+      x: MARGIN, y: pdfY(ctx.y + 10),
+      font: bold, size: 9, color: C.navy,
+    });
+    ctx.y += 14;
+    text(ctx, queryVisibility.serviceAreaExpansion, MARGIN, regular, 9, C.gray, CONTENT_W);
+  }
 
-    if (qv.serviceAreaExpansion) {
-      doc
-        .fillColor(NAVY)
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("Service Area Expansion:", 40, y);
-      doc
-        .fillColor(GRAY_TEXT)
-        .font("Helvetica")
-        .fontSize(9)
-        .text(qv.serviceAreaExpansion, 40, doc.y + 2, { width: 515 });
-      y = doc.y + 8;
-    }
-
-    // ── Footer ───────────────────────────────────────────────────────────────
-    const footerY = 740;
-    doc.rect(0, footerY, 612, 30).fill(NAVY);
-    doc
-      .fillColor(WHITE)
-      .font("Helvetica")
-      .fontSize(8)
-      .text(
-        `Generated ${auditDate.toLocaleDateString()} · NEO Marketing Hub · Powered by Claude AI`,
-        40,
-        footerY + 10,
-        { width: 530, align: "center" }
-      );
-
-    doc.end();
+  // ── Footer on last page ───────────────────────────────────────────────────
+  ctx.page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: 30, color: C.navy });
+  const footerTxt = `Generated ${auditDate.toLocaleDateString()} · NEO Marketing Hub · Powered by Claude AI`;
+  const fW = regular.widthOfTextAtSize(footerTxt, 8);
+  ctx.page.drawText(footerTxt, {
+    x: (PAGE_W - fW) / 2, y: 10,
+    font: regular, size: 8, color: C.white,
   });
+
+  const bytes = await doc.save();
+  return Buffer.from(bytes);
 }
