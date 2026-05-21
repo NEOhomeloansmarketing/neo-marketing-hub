@@ -134,6 +134,7 @@ function AdvisorDrawerContent({
   const [uploadingNap, setUploadingNap] = useState(false);
   const napFileRef = useRef<HTMLInputElement>(null);
   const [auditRunning, setAuditRunning] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [latestAudit, setLatestAudit] = useState<VisibilityAuditRecord | null>(
     initialAdvisor.visibilityAudits?.[0] ?? null
   );
@@ -223,17 +224,20 @@ function AdvisorDrawerContent({
 
   const runAudit = async () => {
     setAuditRunning(true);
+    setAuditError(null);
     try {
       const res = await fetch(`/api/advisors/${advisor.id}/visibility-audit`, {
         method: "POST",
       });
-      if (res.ok) {
-        const data: VisibilityAuditRecord = await res.json();
-        setLatestAudit(data);
-        setAuditHistory((prev) => [data, ...prev]);
+      const data = await res.json();
+      if (!res.ok) {
+        setAuditError(data?.error ?? `Error ${res.status}`);
+        return;
       }
-    } catch {
-      // ignore
+      setLatestAudit(data as VisibilityAuditRecord);
+      setAuditHistory((prev) => [data as VisibilityAuditRecord, ...prev]);
+    } catch (e) {
+      setAuditError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setAuditRunning(false);
     }
@@ -515,16 +519,26 @@ ${advisor.napNotes ? `<div class="section"><div class="section-title">NAP Notes<
           )}
         </div>
         <p className="text-[11.5px]" style={{ color: "#a8aaab" }}>
-          Run an AI-powered audit of this advisor&apos;s online presence and NAP consistency.
+          Run an AI-powered audit of this advisor&apos;s online presence and NAP consistency. Takes ~30 seconds.
         </p>
+        {auditError && (
+          <div className="rounded-md px-3 py-2 text-[11.5px]" style={{ background: "#ef444415", border: "1px solid #ef444444", color: "#fca5a5" }}>
+            ⚠ {auditError}
+          </div>
+        )}
+        {auditRunning && (
+          <div className="rounded-md px-3 py-2 text-[11.5px]" style={{ background: "#5bcbf510", border: "1px solid #5bcbf530", color: "#5bcbf5" }}>
+            ⏳ Analyzing online presence with AI — this takes about 30 seconds…
+          </div>
+        )}
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={runAudit}
             disabled={auditRunning}
             className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition hover:brightness-110 disabled:opacity-50"
-            style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
+            style={{ background: auditRunning ? "#0a2540" : "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
           >
-            {auditRunning ? "Analyzing…" : "🔍 Run Full Visibility Audit"}
+            {auditRunning ? "⏳ Analyzing…" : "🔍 Run Full Visibility Audit"}
           </button>
           {latestAudit?.status === "COMPLETE" && (
             <a

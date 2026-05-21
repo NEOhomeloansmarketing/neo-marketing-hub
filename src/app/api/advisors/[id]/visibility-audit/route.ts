@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/api-auth";
 import { runVisibilityAudit } from "@/lib/visibility-audit";
 
+// Allow up to 5 minutes — Claude + processing can take 30-90 seconds
+export const maxDuration = 300;
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
