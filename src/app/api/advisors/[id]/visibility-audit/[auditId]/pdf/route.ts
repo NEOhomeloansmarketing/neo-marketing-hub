@@ -4,6 +4,9 @@ import { getApiUser } from "@/lib/api-auth";
 import { generateAuditPdf } from "@/lib/audit-pdf";
 import type { AuditResult } from "@/lib/visibility-audit";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; auditId: string }> }
@@ -47,10 +50,11 @@ export async function GET(
 
   const safeName = advisor.name.replace(/[^a-zA-Z0-9-_]/g, "-");
 
-  return new Response(pdfBuffer as unknown as BodyInit, {
+  return new Response(new Uint8Array(pdfBuffer), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${safeName}-visibility-audit.pdf"`,
+      "Content-Length": String(pdfBuffer.length),
     },
   });
 }

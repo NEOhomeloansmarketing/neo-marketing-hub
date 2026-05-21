@@ -6,6 +6,8 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // pdfkit uses Node.js native modules — must not be bundled by webpack
+  serverExternalPackages: ["pdfkit"],
   images: {
     remotePatterns: [
       {
