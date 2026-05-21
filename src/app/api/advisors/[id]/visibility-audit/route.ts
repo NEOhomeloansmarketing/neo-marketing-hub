@@ -58,7 +58,7 @@ export async function POST(
       })),
     });
 
-    // Save completed audit
+    // Save completed audit — rawResult stores the full object for PDF generation
     const completed = await db.visibilityAudit.update({
       where: { id: audit.id },
       data: {
@@ -70,6 +70,7 @@ export async function POST(
         conflicts: result.conflicts as object,
         socials: result.socials as object,
         queryVisibility: result.queryVisibility as object,
+        rawResult: result as object,
         completedAt: new Date(),
       },
     });

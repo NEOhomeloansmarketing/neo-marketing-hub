@@ -579,6 +579,7 @@ model VisibilityAudit {
   conflicts       Json?
   socials         Json?
   queryVisibility Json?
+  rawResult       Json?     // Full AuditResult — includes all new fields
   createdAt       DateTime  @default(now())
   completedAt     DateTime?
 

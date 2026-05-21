@@ -10,37 +10,63 @@ export interface ExtractedNap {
   category?: string;
   serviceArea?: string;
   primaryUrl?: string;
+  primaryUrlNote?: string; // e.g. "→ to correct as TheHardridgeTeam.com"
   nmlsNumber?: string;
 }
 
 export interface AuditResult {
+  // Opening canonical entity sentence
+  canonicalEntityStatement?: string;
+
+  // Canonical NAP
   extractedNap: ExtractedNap;
+
+  // Overall score
   score: number;
+
+  // Score breakdown (5 categories)
   scoreBreakdown: {
-    listingsHealth: { score: number; max: 30; notes: string };
-    reviews: { score: number; max: 20; notes: string };
+    listingsHealth:        { score: number; max: 30; notes: string };
+    reviews:               { score: number; max: 20; notes: string };
     websiteLocalRelevance: { score: number; max: 20; notes: string };
-    brandConsistency: { score: number; max: 15; notes: string };
-    aiSearchReadiness: { score: number; max: 15; notes: string };
+    brandConsistency:      { score: number; max: 15; notes: string };
+    aiSearchReadiness:     { score: number; max: 15; notes: string };
   };
+
+  // Numbered priority action items for the advisor
   actionItems: Array<{
     priority: number;
     platform: string;
-    action: string;
-    url?: string;
+    action: string;  // Full text: "Bold key term: description"
+    url?: string;    // Link shown as "CLICK HERE" or small gray URL
   }>;
+
+  // Checkbox-style conflict bullets
   conflicts: string[];
+
+  // Audience analysis paragraphs
+  mainAudienceServed?: string;
+  whoYouAppearToServe?: string;
+  perceivedStrengths?: string[];
+
+  // All known/found social/directory profiles
   socials: Array<{
     platform: string;
     url: string;
     status: "OK" | "ISSUE" | "REMOVE" | "MISSING";
     notes?: string;
   }>;
+
+  // Missing footprint notes
+  missingFootprintNote?: string;
+  dataAggregatorNote?: string;
+
+  // Query visibility
   queryVisibility: {
     branded: string;
     nonBranded: string;
     topicClusters: string[];
-    missedOpportunities: string[];
+    missedOpportunities: string[]; // Prefixed: "Homebuyers: ...", "Refinancers: ..."
     serviceAreaExpansion: string;
   };
 }
@@ -61,29 +87,25 @@ export interface AdvisorData {
   channels: Array<{ platform: string; url: string; label?: string | null }>;
 }
 
-async function fetchNapFormAsBase64(url: string): Promise<{ data: string; mediaType: string } | null> {
+async function fetchNapFormAsBase64(
+  url: string
+): Promise<{ data: string; mediaType: string } | null> {
   try {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 15000);
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) return null;
-
     const contentType = res.headers.get("content-type") ?? "";
     const buffer = await res.arrayBuffer();
     const base64 = Buffer.from(buffer).toString("base64");
-
-    if (contentType.includes("pdf") || url.toLowerCase().endsWith(".pdf")) {
+    if (contentType.includes("pdf") || url.toLowerCase().endsWith(".pdf"))
       return { data: base64, mediaType: "application/pdf" };
-    }
-    if (contentType.includes("png") || url.toLowerCase().endsWith(".png")) {
+    if (contentType.includes("png") || url.toLowerCase().endsWith(".png"))
       return { data: base64, mediaType: "image/png" };
-    }
-    if (contentType.includes("webp") || url.toLowerCase().endsWith(".webp")) {
+    if (contentType.includes("webp") || url.toLowerCase().endsWith(".webp"))
       return { data: base64, mediaType: "image/webp" };
-    }
-    if (contentType.includes("image") || /\.(jpg|jpeg)$/i.test(url)) {
+    if (contentType.includes("image") || /\.(jpg|jpeg)$/i.test(url))
       return { data: base64, mediaType: "image/jpeg" };
-    }
     return null;
   } catch {
     return null;
@@ -93,98 +115,161 @@ async function fetchNapFormAsBase64(url: string): Promise<{ data: string; mediaT
 export async function runVisibilityAudit(advisor: AdvisorData): Promise<AuditResult> {
   const client = new Anthropic();
 
-  const napForm = advisor.napFormUrl ? await fetchNapFormAsBase64(advisor.napFormUrl) : null;
+  const napForm = advisor.napFormUrl
+    ? await fetchNapFormAsBase64(advisor.napFormUrl)
+    : null;
 
   const knownProfiles = advisor.channels.length
-    ? advisor.channels.map((c) => `- ${c.platform}: ${c.url}${c.label ? ` (${c.label})` : ""}`).join("\n")
+    ? advisor.channels
+        .map((c) => `- ${c.platform}: ${c.url}${c.label ? ` (${c.label})` : ""}`)
+        .join("\n")
     : "No social profiles on record yet.";
 
   const presentPlatforms = advisor.channels.map((c) => c.platform.toUpperCase());
-  const majorPlatforms = ["WEBSITE", "GOOGLE_BUSINESS", "FACEBOOK", "INSTAGRAM", "LINKEDIN", "ZILLOW", "YOUTUBE", "YELP"];
+  const majorPlatforms = [
+    "WEBSITE", "GOOGLE_BUSINESS", "FACEBOOK", "INSTAGRAM",
+    "LINKEDIN", "ZILLOW", "YOUTUBE", "YELP", "BBB", "EXPERIENCE",
+  ];
   const missingPlatforms = majorPlatforms.filter((p) => !presentPlatforms.includes(p));
 
-  const fallbackAddress = [advisor.streetAddress, advisor.city, advisor.state, advisor.zip].filter(Boolean).join(", ");
+  const fallbackAddress = [
+    advisor.streetAddress, advisor.city, advisor.state, advisor.zip,
+  ].filter(Boolean).join(", ");
+
   const fallbackNap = [
     `Name: ${advisor.name}`,
-    advisor.title ? `Title: ${advisor.title}` : null,
-    advisor.category ? `Category: ${advisor.category}` : null,
+    advisor.title       ? `Title: ${advisor.title}`               : null,
+    advisor.category    ? `Category: ${advisor.category}`         : null,
     `NMLS #: ${advisor.nmlsNumber}`,
-    fallbackAddress ? `Address: ${fallbackAddress}` : null,
-    advisor.phone ? `Phone: ${advisor.phone}` : null,
-    advisor.email ? `Email: ${advisor.email}` : null,
+    fallbackAddress     ? `Address: ${fallbackAddress}`           : null,
+    advisor.phone       ? `Phone: ${advisor.phone}`               : null,
+    advisor.email       ? `Email: ${advisor.email}`               : null,
     advisor.serviceArea ? `Primary Service Area: ${advisor.serviceArea}` : null,
   ].filter(Boolean).join("\n");
 
-  const textPrompt = `You are an expert digital visibility auditor for mortgage professionals at NEO Home Loans.
+  const prompt = `You are the NEO Advisor Visibility Strategist — a compliance-aware digital visibility auditor for NEO Home Loans mortgage advisors.
 
-${napForm
-    ? `The attached document is this advisor's NAP (Name, Address, Phone) form — it defines the CANONICAL information that must appear identically everywhere online. Extract the canonical NAP data from this form first, then use it as the source of truth for the entire audit.`
-    : `No NAP form has been uploaded yet. Use the following profile data as the canonical NAP:\n${fallbackNap}`
+CORE RULES (enforce strictly):
+- Always capitalize all three letters in NEO. Never write "Neo" or "neo."
+- NEO Home Loans is an Equal Housing Opportunity Lender.
+- Corporate lender: Better Mortgage Corporation, NMLS#330511.
+- Never use long em dashes.
+- Never use generic AI filler, robotic phrasing, or bloated language.
+- Never guarantee rankings, verification, leads, or outcomes.
+- Write as if advising a real person — plain English, specific, actionable.
+- Every action item must reference THIS advisor's actual data. No generic advice.
+
+${
+  napForm
+    ? `The attached document is this advisor's NAP (Name, Address, Phone) form. This is the CANONICAL SOURCE OF TRUTH. Extract every field precisely as written on the form. Every discrepancy found on any platform must be compared against these canonical values.`
+    : `No NAP form uploaded. Use this profile data as the canonical NAP:\n${fallbackNap}`
 }
 
-## KNOWN ONLINE PROFILES ON RECORD:
+KNOWN ONLINE PROFILES ON RECORD:
 ${knownProfiles}
 
-## PLATFORMS NOT YET ON RECORD (may be missing or need to be created):
-${missingPlatforms.length ? missingPlatforms.join(", ") : "All major platforms accounted for"}
+PLATFORMS NOT YET FOUND IN THEIR PROFILE:
+${missingPlatforms.length ? missingPlatforms.join(", ") : "All major platforms accounted for."}
 
-## YOUR TASK:
-Perform a comprehensive visibility audit comparing each known profile against the canonical NAP. Flag every discrepancy:
+YOUR TASK:
+Perform a comprehensive, advisor-specific visibility audit. Every finding must reference actual data — specific platform names, specific URLs, specific wrong values vs. correct values.
 
-1. NAP inconsistencies — wrong phone, old address, old suite number, name variations, "NEO" not fully capitalized (always "NEO Home Loans")
-2. Old employer branding — previous company names/logos/URLs still showing (Cornerstone, Academy, loanDepot, etc.)
-3. Duplicate or conflicting profiles — multiple LinkedIn accounts, old Instagram handles, stale YouTube channels
-4. Incomplete profiles — missing bio, photo, hours, categories, contact info
-5. Missing high-authority platforms — Google Business Profile, Zillow, BBB, Bing Places, Apple Maps, Experience.com
-6. Review platform gaps
+WHAT TO AUDIT:
+1. NAP inconsistencies — wrong phone number, old address, wrong suite, name not matching exactly, "NEO" not fully capitalized anywhere
+2. Old employer branding — any prior company name (Cornerstone, Academy, loanDepot, etc.) on any live profile
+3. Duplicate or conflicting profiles — multiple LinkedIn/Instagram/YouTube accounts
+4. Incomplete profiles — missing bio, photos, hours, categories, NMLS disclosures
+5. Missing high-authority platforms — GBP, BBB, Bing Places, Apple Maps, Experience.com, Yelp
+6. Review platform gaps and reputation signals
 7. Website local SEO — service area pages, local keywords, schema markup
-8. AI search readiness — clear canonical entity signals, FAQ content, structured data
+8. AI search readiness — canonical entity signals, structured data, FAQ content
 
-## SCORING (be realistic and conservative — only award full points with clear evidence):
-- Listings Health /30: NAP consistency across directories, GMB/Zillow/BBB/Experience presence
-- Reviews /20: review volume, recency, platform diversity, response rate
+SCORING (conservative — only award points with evidence):
+- Listings Health /30: NAP accuracy across directories, GBP/Zillow/BBB/Experience presence
+- Reviews & Reputation /20: review volume, recency, platform diversity, sentiment
 - Website Local Relevance /20: local keywords, service area pages, schema, mobile
-- Brand Consistency /15: identical name/title/photo/employer everywhere, no legacy branding
+- Brand & Entity Consistency /15: identical name/title/photo/employer everywhere, no legacy branding
 - AI Search Readiness /15: clear canonical entity signals, FAQ content, structured data
 
-Generate 8–14 specific, actionable items in priority order (1 = most urgent).
+ACTION ITEMS must be:
+- Numbered 1 through N (most urgent first)
+- Specific to THIS advisor's actual data (mention real platform names, real wrong values)
+- Written as direct instructions: "Update your [Platform] [field] from '[wrong]' to '[correct]'"
+- Include the actual profile URL when available
+- Format: start with a bold key term followed by a colon, then the specific action detail
+  Example: "Remove Old YouTube Channel: Your Cornerstone-era YouTube channel '[Channel Name]' is still live and publicly indexed. Remove or delete this channel to eliminate old employer branding."
+
+CONFLICT ITEMS must be:
+- Specific facts found that contradict the canonical NAP
+- Written as plain factual statements (not instructions)
+- Example: "LinkedIn title shows 'Loan Officer at Cornerstone' — canonical title is Mortgage Advisor at NEO Home Loans"
 
 Return ONLY raw JSON — no markdown, no code fences, no explanation:
 
 {
+  "canonicalEntityStatement": "<1-2 sentences. Example: 'Cody Hardridge, NMLS #329626, Team Lead of The Hardridge Team and Division Leader at NEO Home Loans, serving Oklahoma City and surrounding areas.'>",
   "extractedNap": {
-    "name": "<full name>",
+    "name": "<full advisor name from NAP form>",
     "teamName": "<team name if any, else empty string>",
-    "title": "<job title>",
+    "title": "<canonical job title>",
     "address": "<full canonical address>",
-    "phone": "<canonical phone number>",
+    "phone": "<canonical phone>",
     "email": "<canonical email>",
-    "category": "<business category>",
-    "serviceArea": "<primary service area>",
+    "category": "<business category, e.g. Mortgage Lender>",
+    "serviceArea": "<primary market/city>",
     "primaryUrl": "<primary website URL>",
+    "primaryUrlNote": "<correction note if URL should change, else empty>",
     "nmlsNumber": "<NMLS number>"
   },
   "score": <0-100>,
   "scoreBreakdown": {
-    "listingsHealth": { "score": <number>, "max": 30, "notes": "<2-3 sentences>" },
-    "reviews": { "score": <number>, "max": 20, "notes": "<2-3 sentences>" },
-    "websiteLocalRelevance": { "score": <number>, "max": 20, "notes": "<2-3 sentences>" },
-    "brandConsistency": { "score": <number>, "max": 15, "notes": "<2-3 sentences>" },
-    "aiSearchReadiness": { "score": <number>, "max": 15, "notes": "<2-3 sentences>" }
+    "listingsHealth":        { "score": <0-30>, "max": 30, "notes": "<2-4 sentences of specific findings. Reference actual platforms and what was found.>" },
+    "reviews":               { "score": <0-20>, "max": 20, "notes": "<2-4 sentences>" },
+    "websiteLocalRelevance": { "score": <0-20>, "max": 20, "notes": "<2-4 sentences>" },
+    "brandConsistency":      { "score": <0-15>, "max": 15, "notes": "<2-4 sentences. This is the biggest scoring area for cleanup — be specific about what is inconsistent.>" },
+    "aiSearchReadiness":     { "score": <0-15>, "max": 15, "notes": "<2-4 sentences>" }
   },
   "actionItems": [
-    { "priority": <1-14>, "platform": "<platform name>", "action": "<specific action>", "url": "<url if known>" }
+    {
+      "priority": <1 through N>,
+      "platform": "<Platform name>",
+      "action": "<Bold key term: Specific action description referencing actual data>",
+      "url": "<direct URL to the profile or management page if known>"
+    }
   ],
-  "conflicts": ["<specific conflict or inconsistency found>"],
+  "conflicts": [
+    "<Specific conflict found. Format: '[Platform] shows [wrong value] — canonical [field] is [correct value]'>"
+  ],
+  "mainAudienceServed": "<1-2 paragraphs describing who this advisor actually serves, based on their NAP form and profile data. Include loan types, geography, niche markets, and any notable background.>",
+  "whoYouAppearToServe": "<1-2 paragraphs describing the audience and positioning that comes through in their public profiles — loan types, locations, recurring positioning themes from reviews/bios.>",
+  "perceivedStrengths": [
+    "<Strength 1 based on review sentiment, bio content, or positioning signals>",
+    "<Strength 2>",
+    "<Strength 3>"
+  ],
   "socials": [
-    { "platform": "<name>", "url": "<url>", "status": "OK|ISSUE|REMOVE|MISSING", "notes": "<what needs fixing>" }
+    {
+      "platform": "<Platform>",
+      "url": "<full URL>",
+      "status": "<OK|ISSUE|REMOVE|MISSING>",
+      "notes": "<Specific issue or empty if OK. For REMOVE: explain why. For ISSUE: state what is wrong and what the correct value should be.>"
+    }
   ],
+  "missingFootprintNote": "<Which specific high-authority platforms were not found in this audit and why they matter for visibility. Be specific about platform names.>",
+  "dataAggregatorNote": "<Assessment of data aggregator risk based on any address/phone inconsistencies found. Note this is an inference, not a verified finding.>",
   "queryVisibility": {
-    "branded": "<branded search visibility assessment>",
-    "nonBranded": "<local/non-branded search visibility assessment>",
-    "topicClusters": ["<relevant topic>"],
-    "missedOpportunities": ["<specific missed query opportunity>"],
-    "serviceAreaExpansion": "<service area expansion opportunities>"
+    "branded": "<Assessment of branded search visibility — searches containing the advisor's name or NMLS. What shows up, what's clean, what's fragmented.>",
+    "nonBranded": "<Assessment of non-branded local search visibility — mortgage + city searches. What's working, where competitors dominate.>",
+    "topicClusters": [
+      "<Topic cluster already strong for this advisor>",
+      "<Topic cluster 2>"
+    ],
+    "missedOpportunities": [
+      "Homebuyers: <specific search queries this advisor is missing, comma-separated>",
+      "Refinancers/homeowners: <specific refinance/homeowner queries>",
+      "Referral partners: <specific referral-partner queries>"
+    ],
+    "serviceAreaExpansion": "<Specific cities/suburbs this advisor could expand into based on their market, with context.>"
   }
 }`;
 
@@ -201,22 +286,27 @@ Return ONLY raw JSON — no markdown, no code fences, no explanation:
         type: "image",
         source: {
           type: "base64",
-          media_type: napForm.mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+          media_type: napForm.mediaType as
+            | "image/jpeg"
+            | "image/png"
+            | "image/webp"
+            | "image/gif",
           data: napForm.data,
         },
       } as Anthropic.Messages.ContentBlockParam);
     }
   }
 
-  messageContent.push({ type: "text", text: textPrompt });
+  messageContent.push({ type: "text", text: prompt });
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 4096,
+    max_tokens: 8192,
     messages: [{ role: "user", content: messageContent }],
   });
 
-  const responseText = message.content[0].type === "text" ? message.content[0].text : "";
+  const responseText =
+    message.content[0].type === "text" ? message.content[0].text : "";
 
   let jsonStr = responseText.trim();
   const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);

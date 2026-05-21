@@ -36,11 +36,13 @@ export async function GET(
     return NextResponse.json({ error: "Advisor not found" }, { status: 404 });
   }
 
-  const result: AuditResult = {
-    extractedNap:    (audit.extractedNap   ?? {})  as AuditResult["extractedNap"],
+  // New audits store the complete result in rawResult.
+  // Older audits fall back to the individual columns.
+  const raw = audit.rawResult as AuditResult | null;
+
+  const result: AuditResult = raw ?? {
+    extractedNap:    (audit.extractedNap   ?? {}) as AuditResult["extractedNap"],
     score:           audit.score ?? 0,
-    // scoreBreakdown and queryVisibility may be null for old/failed audits;
-    // generateAuditPdf has its own null-safe defaults so passing null is fine.
     scoreBreakdown:  (audit.scoreBreakdown  ?? null) as AuditResult["scoreBreakdown"],
     actionItems:     (audit.actionItems     ?? [])   as AuditResult["actionItems"],
     conflicts:       (audit.conflicts       ?? [])   as string[],

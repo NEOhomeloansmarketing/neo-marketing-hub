@@ -1,8 +1,17 @@
+/**
+ * audit-pdf.ts
+ * Generates the NEO Advisor Visibility Audit PDF using pdf-lib.
+ * Layout matches the Cody Hardridge Online Trust Score example format.
+ */
+
 import { PDFDocument, StandardFonts, rgb, PageSizes } from "pdf-lib";
 import type { PDFFont, PDFPage } from "pdf-lib";
 import type { AuditResult } from "./visibility-audit";
 
-interface AdvisorInfo {
+// ── Types ─────────────────────────────────────────────────────────────────────
+type Color = ReturnType<typeof rgb>;
+
+export interface AdvisorInfo {
   name: string;
   nmlsNumber: string;
   email?: string | null;
@@ -16,446 +25,596 @@ interface AdvisorInfo {
   serviceArea?: string | null;
 }
 
-type RgbColor = ReturnType<typeof rgb>;
-
 // ── Colors ────────────────────────────────────────────────────────────────────
 const C = {
-  navy:   rgb(11 / 255,  31 / 255,  53 / 255),   // #0b1f35
-  gold:   rgb(245 / 255, 158 / 255, 11 / 255),   // #f59e0b
-  white:  rgb(1, 1, 1),
-  gray:   rgb(100 / 255, 116 / 255, 139 / 255),  // #64748b
-  lgray:  rgb(248 / 255, 250 / 252, 252 / 255),  // #f8fafc
-  border: rgb(226 / 255, 232 / 255, 240 / 255),  // #e2e8f0
-  green:  rgb(22 / 255,  163 / 255, 74 / 255),   // #16a34a
-  orange: rgb(217 / 255, 119 / 255, 6 / 255),    // #d97706
-  red:    rgb(220 / 255, 38 / 255,  38 / 255),   // #dc2626
-  lblue:  rgb(91 / 255,  203 / 255, 245 / 255),  // #5bcbf5
+  black:   rgb(0.067, 0.067, 0.067),   // near-black body text #111
+  navy:    rgb(0.043, 0.122, 0.208),   // #0b1f35 headings
+  gold:    rgb(0.98,  0.80,  0.18),    // #f9cc2e amber section headers
+  goldDk:  rgb(0.92,  0.65,  0.02),    // slightly darker gold for text on gold
+  teal:    rgb(0.0,   0.502, 0.502),   // #008080 subheadings like "Name To-Do:"
+  white:   rgb(1, 1, 1),
+  gray:    rgb(0.40,  0.40,  0.40),    // body gray
+  lgray:   rgb(0.92,  0.92,  0.92),    // light gray backgrounds
+  green:   rgb(0.086, 0.639, 0.290),   // #16a34a score good
+  orange:  rgb(0.976, 0.447, 0.024),   // #f97316 score mid
+  red:     rgb(0.863, 0.149, 0.149),   // #dc2626 score bad / REMOVE
+  amber:   rgb(0.851, 0.467, 0.024),   // #d97706 ISSUE
+  muted:   rgb(0.55,  0.55,  0.55),    // URL text / small labels
+  remove:  rgb(0.6,   0.1,   0.1),     // REMOVE items
 };
 
-const PAGE_W = 612;
-const PAGE_H = 792;
-const MARGIN = 40;
-const CONTENT_W = PAGE_W - MARGIN * 2; // 532
+// ── Page constants ─────────────────────────────────────────────────────────────
+const PW  = 612;   // Letter width  (pts)
+const PH  = 792;   // Letter height (pts)
+const ML  = 54;    // left margin
+const MR  = 558;   // right margin
+const CW  = MR - ML;   // 504 — content width
+const BOT = 60;    // bottom margin (don't render below PH - BOT)
 
-function scoreColor(score: number): RgbColor {
+// ── Render context ─────────────────────────────────────────────────────────────
+interface Ctx {
+  doc:     PDFDocument;
+  page:    PDFPage;
+  y:       number;   // cursor — distance from TOP of page
+  reg:     PDFFont;
+  bold:    PDFFont;
+  pageNum: number;
+}
+
+// pdf-lib y=0 is bottom-left. Convert "y from top" + size to baseline y.
+function py(topY: number, size: number): number {
+  return PH - topY - size;
+}
+
+function scoreColor(score: number): Color {
   if (score >= 80) return C.green;
   if (score >= 60) return C.orange;
   return C.red;
 }
 
-// pdf-lib y=0 is bottom-left. Convert "y from top" to pdf-lib's y.
-// `size` = the font size, so text baseline sits at top + size.
-function pdfY(topY: number, size = 0): number {
-  return PAGE_H - topY - size;
+function addPage(ctx: Ctx): void {
+  ctx.page = ctx.doc.addPage(PageSizes.Letter);
+  ctx.y = 50;
+  ctx.pageNum++;
 }
 
-// Split text into lines that fit maxWidth
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const lines: string[] = [];
-  for (const paragraph of String(text ?? "").split("\n")) {
-    const words = paragraph.split(" ").filter(Boolean);
-    if (!words.length) { lines.push(""); continue; }
+// Ensure at least `needed` pts remain before bottom margin; add page if not.
+function need(ctx: Ctx, needed: number): void {
+  if (ctx.y + needed > PH - BOT) addPage(ctx);
+}
+
+// Fill rectangle (topY-based)
+function rect(ctx: Ctx, x: number, topY: number, w: number, h: number, color: Color): void {
+  ctx.page.drawRectangle({ x, y: PH - topY - h, width: w, height: h, color });
+}
+
+// Draw text at (x, topY) — topY is the TOP of the line.
+function dt(
+  page: PDFPage,
+  text: string,
+  x: number,
+  topY: number,
+  font: PDFFont,
+  size: number,
+  color: Color
+): void {
+  if (!text) return;
+  page.drawText(text, { x, y: py(topY, size), font, size, color });
+}
+
+// Wrap text string into lines that fit maxWidth
+function wrap(text: string, font: PDFFont, size: number, maxW: number): string[] {
+  const out: string[] = [];
+  for (const para of String(text ?? "").split("\n")) {
+    const words = para.split(" ").filter(Boolean);
+    if (!words.length) { out.push(""); continue; }
     let line = "";
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(test, size) > maxWidth && line) {
-        lines.push(line);
-        line = word;
+    for (const w of words) {
+      const test = line ? `${line} ${w}` : w;
+      if (font.widthOfTextAtSize(test, size) > maxW && line) {
+        out.push(line); line = w;
       } else {
         line = test;
       }
     }
-    if (line) lines.push(line);
+    if (line) out.push(line);
   }
-  return lines.length ? lines : [""];
+  return out.length ? out : [""];
 }
 
-// Mutable render context
-interface Ctx {
-  doc: PDFDocument;
-  page: PDFPage;
-  y: number;           // cursor — y from top
-  regular: PDFFont;
-  bold: PDFFont;
-}
-
-function newPage(ctx: Ctx): void {
-  ctx.page = ctx.doc.addPage(PageSizes.Letter);
-  ctx.y = MARGIN;
-}
-
-function ensureSpace(ctx: Ctx, needed: number): void {
-  if (ctx.y + needed > PAGE_H - MARGIN) newPage(ctx);
-}
-
-function fillRect(ctx: Ctx, x: number, topY: number, w: number, h: number, color: RgbColor): void {
-  ctx.page.drawRectangle({ x, y: pdfY(topY + h), width: w, height: h, color });
-}
-
-function hRule(ctx: Ctx): void {
-  ctx.page.drawLine({
-    start: { x: MARGIN, y: pdfY(ctx.y) },
-    end:   { x: PAGE_W - MARGIN, y: pdfY(ctx.y) },
-    thickness: 0.5,
-    color: C.border,
-  });
-  ctx.y += 10;
-}
-
-function sectionHeader(ctx: Ctx, title: string): void {
-  ensureSpace(ctx, 32);
-  fillRect(ctx, MARGIN, ctx.y, CONTENT_W, 22, C.gold);
-  ctx.page.drawText(title.toUpperCase(), {
-    x: MARGIN + 8,
-    y: pdfY(ctx.y + 15),
-    font: ctx.bold,
-    size: 9,
-    color: C.navy,
-  });
-  ctx.y += 30;
-}
-
-// Draw text at cursor (ctx.y), advance cursor
-function text(
+// Draw wrapped text, advance ctx.y, return new y
+function drawWrapped(
   ctx: Ctx,
-  str: string,
+  text: string,
   x: number,
   font: PDFFont,
   size: number,
-  color: RgbColor,
-  maxWidth?: number
+  color: Color,
+  maxW: number,
+  leading = 1.55
 ): void {
-  const lines = maxWidth ? wrapText(str, font, size, maxWidth) : [str];
+  const lines = wrap(text, font, size, maxW);
   for (const line of lines) {
-    ensureSpace(ctx, size * 1.5);
-    ctx.page.drawText(line, { x, y: pdfY(ctx.y + size), font, size, color });
-    ctx.y += Math.round(size * 1.45);
+    need(ctx, size * leading + 2);
+    dt(ctx.page, line, x, ctx.y, font, size, color);
+    ctx.y += Math.ceil(size * leading);
   }
 }
 
+// ── Section header — gold bar with dark text ──────────────────────────────────
+function sectionHeader(ctx: Ctx, title: string): void {
+  need(ctx, 30);
+  ctx.y += 6;
+  rect(ctx, ML - 4, ctx.y, CW + 8, 24, C.gold);
+  dt(ctx.page, title, ML + 4, ctx.y + 4, ctx.bold, 11, C.navy);
+  ctx.y += 32;
+}
+
+// ── Thin rule ─────────────────────────────────────────────────────────────────
+function rule(ctx: Ctx, color = C.lgray): void {
+  ctx.page.drawLine({
+    start: { x: ML, y: PH - ctx.y },
+    end:   { x: MR, y: PH - ctx.y },
+    thickness: 0.5,
+    color,
+  });
+  ctx.y += 8;
+}
+
+// ── Checkbox bullet (□ + text) ────────────────────────────────────────────────
+function checkBullet(ctx: Ctx, text: string): void {
+  need(ctx, 20);
+  // Draw empty checkbox square
+  ctx.page.drawRectangle({
+    x:      ML,
+    y:      PH - ctx.y - 10,
+    width:  9,
+    height: 9,
+    borderColor: C.black,
+    borderWidth: 0.8,
+    color:  C.white,
+  });
+  drawWrapped(ctx, text, ML + 15, ctx.reg, 9.5, C.black, CW - 15);
+  ctx.y += 2;
+}
+
+// ── Bullet point ──────────────────────────────────────────────────────────────
+function bullet(ctx: Ctx, text: string, color = C.black, size = 9.5): void {
+  need(ctx, size * 2);
+  dt(ctx.page, "•", ML, ctx.y, ctx.bold, size, color);
+  drawWrapped(ctx, text, ML + 12, ctx.reg, size, color, CW - 12);
+  ctx.y += 1;
+}
+
+// ── Platform status badge ─────────────────────────────────────────────────────
+function statusBadge(ctx: Ctx, status: string): void {
+  const color: Record<string, Color> = {
+    OK:      C.green,
+    ISSUE:   C.amber,
+    REMOVE:  C.red,
+    MISSING: C.muted,
+  };
+  const bg = color[status] ?? C.muted;
+  const w  = 52;
+  rect(ctx, ML, ctx.y + 1, w, 13, bg);
+  const sw = ctx.bold.widthOfTextAtSize(status, 7);
+  dt(ctx.page, status, ML + (w - sw) / 2, ctx.y + 2, ctx.bold, 7, C.white);
+}
+
+// ── First name extraction ─────────────────────────────────────────────────────
+function firstName(name: string): string {
+  return name.split(" ")[0] ?? name;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN EXPORT
+// ─────────────────────────────────────────────────────────────────────────────
 export async function generateAuditPdf(
   result: AuditResult,
   advisor: AdvisorInfo,
   auditDate: Date
 ): Promise<Buffer> {
-  const doc      = await PDFDocument.create();
-  const regular  = await doc.embedFont(StandardFonts.Helvetica);
-  const bold     = await doc.embedFont(StandardFonts.HelveticaBold);
+  const doc   = await PDFDocument.create();
+  const reg   = await doc.embedFont(StandardFonts.Helvetica);
+  const bold  = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const ctx: Ctx = { doc, page: doc.addPage(PageSizes.Letter), y: MARGIN, regular, bold };
-
-  // ── Null-safe defaults ────────────────────────────────────────────────────
-  const scoreBreakdown = result.scoreBreakdown ?? {
-    listingsHealth:        { score: 0, max: 30, notes: "No data available." },
-    reviews:               { score: 0, max: 20, notes: "No data available." },
-    websiteLocalRelevance: { score: 0, max: 20, notes: "No data available." },
-    brandConsistency:      { score: 0, max: 15, notes: "No data available." },
-    aiSearchReadiness:     { score: 0, max: 15, notes: "No data available." },
+  const ctx: Ctx = {
+    doc, page: doc.addPage(PageSizes.Letter),
+    y: 50, reg, bold, pageNum: 1,
   };
-  const queryVisibility = result.queryVisibility ?? {
+
+  // ── Null-safe defaults for older/partial audits ───────────────────────────
+  const nap    = result.extractedNap    ?? {};
+  const score  = result.score           ?? 0;
+  const sBreak = result.scoreBreakdown  ?? {
+    listingsHealth:        { score: 0, max: 30, notes: "No data." },
+    reviews:               { score: 0, max: 20, notes: "No data." },
+    websiteLocalRelevance: { score: 0, max: 20, notes: "No data." },
+    brandConsistency:      { score: 0, max: 15, notes: "No data." },
+    aiSearchReadiness:     { score: 0, max: 15, notes: "No data." },
+  };
+  const items      = result.actionItems     ?? [];
+  const conflicts  = result.conflicts       ?? [];
+  const socials    = result.socials         ?? [];
+  const qv         = result.queryVisibility ?? {
     branded: "", nonBranded: "",
     topicClusters: [], missedOpportunities: [], serviceAreaExpansion: "",
   };
-  const actionItems = result.actionItems ?? [];
-  const conflicts   = result.conflicts   ?? [];
-  const socials     = result.socials     ?? [];
-  const score       = result.score       ?? 0;
 
-  // ── Header bar ────────────────────────────────────────────────────────────
-  fillRect(ctx, 0, 0, PAGE_W, 70, C.navy);
-  ctx.page.drawText("NEO Marketing Hub", {
-    x: MARGIN, y: pdfY(26),
-    font: bold, size: 16, color: C.white,
+  // ── PAGE 1: Logo header + score + canonical entity ────────────────────────
+
+  // Logo area — white background implied, draw "NEO HOME LOANS" header
+  ctx.page.drawRectangle({ x: 0, y: PH - 72, width: PW, height: 72, color: C.white });
+
+  // Centered logo text block
+  const logoLine1 = "NEO HOME LOANS";
+  const lw1 = bold.widthOfTextAtSize(logoLine1, 18);
+  dt(ctx.page, logoLine1, (PW - lw1) / 2, ctx.y + 4, bold, 18, C.navy);
+
+  const logoLine2 = "powered by Better";
+  const lw2 = reg.widthOfTextAtSize(logoLine2, 10);
+  dt(ctx.page, logoLine2, (PW - lw2) / 2, ctx.y + 28, reg, 10, C.muted);
+
+  ctx.y = 78;
+
+  // Thin gold rule under header
+  ctx.page.drawLine({
+    start: { x: 0, y: PH - ctx.y },
+    end:   { x: PW, y: PH - ctx.y },
+    thickness: 2,
+    color: C.gold,
   });
-  ctx.page.drawText("Powered by NEO", {
-    x: MARGIN, y: pdfY(44),
-    font: regular, size: 9, color: C.lblue,
-  });
+  ctx.y += 14;
+
+  // Date
   const dateStr = auditDate.toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric",
   });
-  const dateW = regular.widthOfTextAtSize(dateStr, 9);
-  ctx.page.drawText(dateStr, {
-    x: PAGE_W - MARGIN - dateW, y: pdfY(44),
-    font: regular, size: 9, color: C.white,
-  });
+  dt(ctx.page, dateStr, ML, ctx.y, reg, 10, C.gray);
+  ctx.y += 22;
 
-  ctx.y = 82;
-
-  // ── Score headline ────────────────────────────────────────────────────────
+  // ── Score headline ─────────────────────────────────────────────────────────
   const sColor = scoreColor(score);
-  const sLabel = score >= 80 ? "STRONG" : score >= 60 ? "NEEDS WORK" : "CRITICAL";
+  const headPrefix = `${advisor.name} Online Trust Score: `;
+  const headScore  = `${score}/100`;
+  const headSize   = 22;
+  dt(ctx.page, headPrefix, ML, ctx.y, bold, headSize, C.black);
+  const prefW = bold.widthOfTextAtSize(headPrefix, headSize);
+  dt(ctx.page, headScore, ML + prefW, ctx.y, bold, headSize, sColor);
+  ctx.y += Math.ceil(headSize * 1.6);
 
-  ctx.page.drawText(advisor.name, {
-    x: MARGIN, y: pdfY(ctx.y + 18),
-    font: bold, size: 18, color: C.navy,
-  });
-  ctx.y += 26;
-
-  const prefix = "Online Trust Score:  ";
-  ctx.page.drawText(prefix, {
-    x: MARGIN, y: pdfY(ctx.y + 14),
-    font: bold, size: 14, color: C.navy,
-  });
-  const prefixW = bold.widthOfTextAtSize(prefix, 14);
-  ctx.page.drawText(`${score}/100`, {
-    x: MARGIN + prefixW, y: pdfY(ctx.y + 14),
-    font: bold, size: 14, color: sColor,
-  });
-
-  // Badge
-  fillRect(ctx, 420, ctx.y - 2, 135, 26, sColor);
-  const lblW = bold.widthOfTextAtSize(sLabel, 12);
-  ctx.page.drawText(sLabel, {
-    x: 420 + (135 - lblW) / 2, y: pdfY(ctx.y + 16),
-    font: bold, size: 12, color: C.white,
-  });
-  ctx.y += 36;
-  hRule(ctx);
-
-  // ── Canonical Entity ──────────────────────────────────────────────────────
-  ctx.page.drawText("CANONICAL ENTITY", {
-    x: MARGIN, y: pdfY(ctx.y + 8),
-    font: bold, size: 8, color: C.gray,
-  });
-  ctx.y += 12;
-  fillRect(ctx, MARGIN, ctx.y, CONTENT_W, 2, C.navy);
-  ctx.y += 8;
-
-  const nap = result.extractedNap ?? {};
-  const napLines = [
-    nap.name
-      ? `N [name] — ${nap.name}${nap.teamName ? ` | ${nap.teamName}` : ""}`
-      : `Name: ${advisor.name}`,
-    nap.address ?? null,
-    nap.phone ?? advisor.phone ? `P [phone] — ${nap.phone ?? advisor.phone}` : null,
-    nap.email ?? advisor.email ? `Email — ${nap.email ?? advisor.email}` : null,
-    nap.title ?? advisor.title ? `Title — ${nap.title ?? advisor.title}` : null,
-    nap.category ? `Category — ${nap.category}` : null,
-    nap.serviceArea ? `Primary Service Area — ${nap.serviceArea}` : null,
-    nap.primaryUrl  ? `Primary URL — ${nap.primaryUrl}` : null,
-    nap.nmlsNumber ?? advisor.nmlsNumber
-      ? `NMLS # — ${nap.nmlsNumber ?? advisor.nmlsNumber}`
-      : null,
-  ].filter(Boolean) as string[];
-
-  for (const line of napLines) {
-    text(ctx, `• ${line}`, MARGIN + 8, regular, 9, C.navy, CONTENT_W - 8);
+  // ── Canonical entity statement ─────────────────────────────────────────────
+  if (result.canonicalEntityStatement) {
+    drawWrapped(ctx, result.canonicalEntityStatement, ML, bold, 10.5, C.black, CW);
+    ctx.y += 4;
   }
-  ctx.y += 6;
-  hRule(ctx);
 
-  // ── Priority Action Plan ──────────────────────────────────────────────────
+  // ── NAP bullets ───────────────────────────────────────────────────────────
+  const napBullets: Array<[string, string]> = [
+    ["N [name]",             [nap.name, nap.teamName].filter(Boolean).join(" | ")
+                             || advisor.name],
+    ["A [address]",          nap.address
+                             || [advisor.streetAddress, advisor.city, advisor.state, advisor.zip]
+                                .filter(Boolean).join(", ")],
+    ["P [phone number]",     nap.phone  || advisor.phone  || ""],
+    ["Email",                nap.email  || advisor.email  || ""],
+    ["Title",                nap.title  || advisor.title  || ""],
+    ["Category",             nap.category || advisor.category || ""],
+    ["Top Service Area/Market", nap.serviceArea || advisor.serviceArea || ""],
+  ].filter(([, v]) => v) as Array<[string, string]>;
+
+  for (const [label, value] of napBullets) {
+    need(ctx, 16);
+    const labelStr = `${label} - `;
+    const labelW   = bold.widthOfTextAtSize(labelStr, 10);
+    dt(ctx.page, "◦", ML + 10, ctx.y, reg, 10, C.black); // open bullet ◦
+    dt(ctx.page, labelStr, ML + 22, ctx.y, bold, 10, C.black);
+    drawWrapped(ctx, value, ML + 22 + labelW, reg, 10, C.black, CW - 22 - labelW);
+    ctx.y += 2;
+  }
+
+  // Primary URL line
+  if (nap.primaryUrl) {
+    need(ctx, 18);
+    ctx.y += 4;
+    const urlLabel = "Primary URL: ";
+    const urlLabelW = bold.widthOfTextAtSize(urlLabel, 10);
+    dt(ctx.page, urlLabel, ML, ctx.y, bold, 10, C.black);
+    dt(ctx.page, nap.primaryUrl, ML + urlLabelW, ctx.y, reg, 10, C.muted);
+    if (nap.primaryUrlNote) {
+      const urlW = reg.widthOfTextAtSize(nap.primaryUrl, 10);
+      dt(ctx.page, `  ${nap.primaryUrlNote}`, ML + urlLabelW + urlW, ctx.y, reg, 10, C.teal);
+    }
+    ctx.y += 18;
+  }
+
+  // ── PRIORITY ACTION PLAN ───────────────────────────────────────────────────
   sectionHeader(ctx, "Priority Action Plan");
 
-  for (const item of actionItems.slice(0, 12)) {
-    ensureSpace(ctx, 32);
-    const bColor = item.priority <= 3 ? C.red : item.priority <= 7 ? C.orange : C.green;
-    fillRect(ctx, MARGIN, ctx.y, 18, 15, bColor);
-    const numStr = String(item.priority);
-    ctx.page.drawText(numStr, {
-      x: MARGIN + (18 - bold.widthOfTextAtSize(numStr, 8)) / 2,
-      y: pdfY(ctx.y + 11),
-      font: bold, size: 8, color: C.white,
-    });
+  // "FirstName To-Do:" subheader
+  const toDoLabel = `${firstName(advisor.name)} To-Do:`;
+  dt(ctx.page, toDoLabel, ML, ctx.y, bold, 11, C.teal);
+  ctx.y += 20;
 
-    const platStr = `[${item.platform}] `;
-    ctx.page.drawText(platStr, {
-      x: MARGIN + 22, y: pdfY(ctx.y + 11),
-      font: bold, size: 9, color: C.navy,
-    });
-    const pW = bold.widthOfTextAtSize(platStr, 9);
+  for (const item of items) {
+    need(ctx, 30);
 
-    const actionLines = wrapText(item.action, regular, 9, CONTENT_W - 22 - pW);
-    ctx.page.drawText(actionLines[0], {
-      x: MARGIN + 22 + pW, y: pdfY(ctx.y + 11),
-      font: regular, size: 9, color: C.navy,
-    });
-    ctx.y += 16;
+    // Priority number
+    const numStr  = `${item.priority}.`;
+    const numW    = bold.widthOfTextAtSize(numStr, 10.5);
+    dt(ctx.page, numStr, ML, ctx.y, bold, 10.5, C.black);
 
-    for (let i = 1; i < actionLines.length; i++) {
-      ensureSpace(ctx, 13);
-      ctx.page.drawText(actionLines[i], {
-        x: MARGIN + 22, y: pdfY(ctx.y + 10),
-        font: regular, size: 9, color: C.navy,
-      });
+    // Split action into "Bold term:" and rest
+    const colonIdx = item.action.indexOf(":");
+    let boldPart  = "";
+    let restPart  = item.action;
+
+    if (colonIdx > 0 && colonIdx < 60) {
+      boldPart = item.action.slice(0, colonIdx + 1);   // includes colon
+      restPart = item.action.slice(colonIdx + 1).trimStart();
+    }
+
+    const textX = ML + numW + 4;
+    const textW = CW - numW - 4;
+
+    if (boldPart) {
+      // Bold term on first line
+      const bw = bold.widthOfTextAtSize(boldPart + " ", 10.5);
+      dt(ctx.page, boldPart, textX, ctx.y, bold, 10.5, C.black);
+      // Rest of action text after bold term (same line if fits, else wrap)
+      const firstLineRest = wrap(restPart, reg, 10.5, textW - bw);
+      if (firstLineRest[0]) {
+        dt(ctx.page, " " + firstLineRest[0], textX + bw, ctx.y, reg, 10.5, C.black);
+      }
+      ctx.y += Math.ceil(10.5 * 1.6);
+      for (let i = 1; i < firstLineRest.length; i++) {
+        need(ctx, 16);
+        dt(ctx.page, firstLineRest[i], textX, ctx.y, reg, 10.5, C.black);
+        ctx.y += Math.ceil(10.5 * 1.5);
+      }
+    } else {
+      drawWrapped(ctx, restPart, textX, reg, 10.5, C.black, textW);
+    }
+
+    // URL shown as small clickable-style text
+    if (item.url) {
+      need(ctx, 14);
+      dt(ctx.page, item.url.slice(0, 85), textX, ctx.y, reg, 7.5, C.muted);
       ctx.y += 13;
     }
-
-    if (item.url) {
-      ensureSpace(ctx, 12);
-      ctx.page.drawText(item.url.slice(0, 90), {
-        x: MARGIN + 22, y: pdfY(ctx.y + 9),
-        font: regular, size: 7, color: C.gray,
-      });
-      ctx.y += 12;
-    }
-    ctx.y += 3;
+    ctx.y += 5;
   }
-  ctx.y += 4;
 
-  // ── Core Identity Conflicts ───────────────────────────────────────────────
+  // ── CORE IDENTITY CONFLICTS ────────────────────────────────────────────────
   if (conflicts.length > 0) {
-    sectionHeader(ctx, "Core Identity Conflicts");
+    sectionHeader(ctx, "Core identity conflicts:");
+
     for (const c of conflicts) {
-      text(ctx, `• ${c}`, MARGIN + 8, regular, 9, C.navy, CONTENT_W - 8);
+      checkBullet(ctx, c);
     }
-    ctx.y += 4;
+    ctx.y += 8;
+
+    // Repeat canonical NAP as the authoritative reference
+    rule(ctx, C.lgray);
+    const napRef = [
+      nap.name ? `N [name] - ${[nap.name, nap.teamName].filter(Boolean).join(" | ")}` : null,
+      nap.address    ? `A [address] - ${nap.address}` : null,
+      nap.phone      ? `P [phone number] - ${nap.phone}` : null,
+      nap.email      ? `Email - ${nap.email}` : null,
+      nap.title      ? `Title - ${nap.title}` : null,
+      nap.category   ? `Category - ${nap.category}` : null,
+      nap.serviceArea ? `Top Service Area/Market: ${nap.serviceArea}` : null,
+    ].filter(Boolean) as string[];
+
+    for (const line of napRef) {
+      need(ctx, 16);
+      const idx = line.indexOf(" - ");
+      if (idx > 0) {
+        const lbl = line.slice(0, idx + 3);
+        const val = line.slice(idx + 3);
+        const lw  = bold.widthOfTextAtSize(lbl, 10);
+        dt(ctx.page, lbl, ML + 10, ctx.y, bold, 10, C.black);
+        drawWrapped(ctx, val, ML + 10 + lw, reg, 10, C.black, CW - 10 - lw);
+      } else {
+        drawWrapped(ctx, line, ML + 10, reg, 10, C.black, CW - 10);
+      }
+      ctx.y += 2;
+    }
+    ctx.y += 10;
   }
 
-  // ── Links / Socials ───────────────────────────────────────────────────────
-  if (socials.length > 0) {
-    sectionHeader(ctx, "Links / Socials");
-    const STATUS: Record<string, RgbColor> = {
-      OK: C.green, ISSUE: C.orange, REMOVE: C.red, MISSING: C.gray,
-    };
-    for (const s of socials) {
-      ensureSpace(ctx, 28);
-      const bColor = STATUS[s.status] ?? C.gray;
-      fillRect(ctx, MARGIN, ctx.y, 50, 13, bColor);
-      const sW = bold.widthOfTextAtSize(s.status, 7);
-      ctx.page.drawText(s.status, {
-        x: MARGIN + (50 - sW) / 2, y: pdfY(ctx.y + 10),
-        font: bold, size: 7, color: C.white,
-      });
-
-      ctx.page.drawText(s.platform, {
-        x: MARGIN + 56, y: pdfY(ctx.y + 11),
-        font: bold, size: 9, color: C.navy,
-      });
-      if (s.notes) {
-        const platW = bold.widthOfTextAtSize(s.platform, 9);
-        ctx.page.drawText(` — ${s.notes}`.slice(0, 70), {
-          x: MARGIN + 56 + platW, y: pdfY(ctx.y + 11),
-          font: regular, size: 8, color: C.gray,
-        });
-      }
-      ctx.y += 15;
-
-      if (s.url) {
-        ctx.page.drawText(s.url.slice(0, 85), {
-          x: MARGIN + 56, y: pdfY(ctx.y + 9),
-          font: regular, size: 7, color: C.gray,
-        });
-        ctx.y += 12;
-      }
-      ctx.y += 3;
-    }
-    ctx.y += 4;
-  }
-
-  // ── Score Breakdown ───────────────────────────────────────────────────────
-  ensureSpace(ctx, 40);
-  sectionHeader(ctx, "Visibility Score Breakdown");
-
-  const categories = [
-    { label: "Listings Health",         data: scoreBreakdown.listingsHealth },
-    { label: "Reviews",                 data: scoreBreakdown.reviews },
-    { label: "Website Local Relevance", data: scoreBreakdown.websiteLocalRelevance },
-    { label: "Brand Consistency",       data: scoreBreakdown.brandConsistency },
-    { label: "AI Search Readiness",     data: scoreBreakdown.aiSearchReadiness },
-  ];
-
-  for (const cat of categories) {
-    ensureSpace(ctx, 50);
-    const pct = (cat.data.score ?? 0) / (cat.data.max ?? 1);
-    const catColor = scoreColor(Math.round(pct * 100));
-    const barW = Math.round(pct * 200);
-
-    ctx.page.drawText(cat.label, {
-      x: MARGIN, y: pdfY(ctx.y + 10),
-      font: bold, size: 9, color: C.navy,
-    });
-    const lW = bold.widthOfTextAtSize(cat.label, 9);
-    ctx.page.drawText(`  ${cat.data.score}/${cat.data.max}`, {
-      x: MARGIN + lW, y: pdfY(ctx.y + 10),
-      font: bold, size: 9, color: catColor,
-    });
-    ctx.y += 14;
-
-    // Progress bar
-    ctx.page.drawRectangle({ x: MARGIN, y: pdfY(ctx.y + 7), width: 200, height: 6, color: C.lgray });
-    if (barW > 0) {
-      ctx.page.drawRectangle({ x: MARGIN, y: pdfY(ctx.y + 7), width: barW, height: 6, color: catColor });
-    }
-    ctx.y += 12;
-
-    if (cat.data.notes) {
-      text(ctx, cat.data.notes, MARGIN, regular, 8, C.gray, CONTENT_W);
-    }
+  // Audience analysis
+  if (result.mainAudienceServed) {
+    need(ctx, 30);
+    dt(ctx.page, "Main Audience Served:", ML, ctx.y, bold, 10.5, C.black);
+    ctx.y += 16;
+    drawWrapped(ctx, result.mainAudienceServed, ML, reg, 10, C.black, CW);
     ctx.y += 8;
   }
 
-  // ── Query Visibility Map ──────────────────────────────────────────────────
-  ensureSpace(ctx, 40);
-  sectionHeader(ctx, "Query Visibility Map");
-
-  if (queryVisibility.branded) {
-    ctx.page.drawText("Branded Search:", {
-      x: MARGIN, y: pdfY(ctx.y + 10),
-      font: bold, size: 9, color: C.navy,
-    });
-    ctx.y += 14;
-    text(ctx, queryVisibility.branded, MARGIN, regular, 9, C.gray, CONTENT_W);
-    ctx.y += 4;
+  if (result.whoYouAppearToServe) {
+    need(ctx, 30);
+    dt(ctx.page, "Who you appear to serve:", ML, ctx.y, bold, 10.5, C.black);
+    ctx.y += 16;
+    drawWrapped(ctx, result.whoYouAppearToServe, ML, reg, 10, C.black, CW);
+    ctx.y += 8;
   }
 
-  if (queryVisibility.nonBranded) {
-    ensureSpace(ctx, 20);
-    ctx.page.drawText("Non-Branded Search:", {
-      x: MARGIN, y: pdfY(ctx.y + 10),
-      font: bold, size: 9, color: C.navy,
+  if (result.perceivedStrengths?.length) {
+    need(ctx, 30);
+    dt(ctx.page, "Top 3 perceived strengths from public sentiment:", ML, ctx.y, bold, 10.5, C.black);
+    ctx.y += 16;
+    const letters = ["a.", "b.", "c."];
+    result.perceivedStrengths.slice(0, 3).forEach((s, i) => {
+      need(ctx, 16);
+      const lbl = letters[i] ?? `${i + 1}.`;
+      dt(ctx.page, lbl, ML + 14, ctx.y, reg, 10, C.black);
+      drawWrapped(ctx, s, ML + 30, reg, 10, C.black, CW - 30);
+      ctx.y += 2;
     });
-    ctx.y += 14;
-    text(ctx, queryVisibility.nonBranded, MARGIN, regular, 9, C.gray, CONTENT_W);
-    ctx.y += 4;
+    ctx.y += 8;
   }
 
-  if (queryVisibility.topicClusters?.length) {
-    ensureSpace(ctx, 20);
-    ctx.page.drawText("Topic Clusters:", {
-      x: MARGIN, y: pdfY(ctx.y + 10),
-      font: bold, size: 9, color: C.navy,
-    });
-    ctx.y += 14;
-    for (const tc of queryVisibility.topicClusters) {
-      text(ctx, `• ${tc}`, MARGIN + 8, regular, 9, C.gray, CONTENT_W - 8);
+  // ── LINKS / SOCIALS ────────────────────────────────────────────────────────
+  if (socials.length > 0) {
+    sectionHeader(ctx, "Links/Socials");
+
+    for (const s of socials) {
+      need(ctx, 28);
+
+      if (s.status !== "OK") {
+        statusBadge(ctx, s.status);
+      }
+
+      const xOffset = s.status !== "OK" ? ML + 58 : ML;
+      const availW  = CW - (s.status !== "OK" ? 58 : 0);
+
+      // Platform name bold
+      const platStr = `${s.platform}: `;
+      const platW   = bold.widthOfTextAtSize(platStr, 10);
+      dt(ctx.page, platStr, xOffset, ctx.y + 1, bold, 10,
+        s.status === "REMOVE" ? C.remove : C.black);
+
+      // URL
+      const urlColor = s.status === "REMOVE" ? C.remove : C.muted;
+      const urlLines = wrap(s.url, reg, 9, availW - platW);
+      dt(ctx.page, urlLines[0] ?? "", xOffset + platW, ctx.y + 1, reg, 9, urlColor);
+      ctx.y += 15;
+
+      // Notes if any
+      if (s.notes) {
+        drawWrapped(ctx, `  ${s.notes}`, xOffset, reg, 9, C.gray, availW);
+      }
+      ctx.y += 3;
     }
-    ctx.y += 4;
+    ctx.y += 6;
   }
 
-  if (queryVisibility.missedOpportunities?.length) {
-    ensureSpace(ctx, 20);
-    ctx.page.drawText("Missed Opportunities:", {
-      x: MARGIN, y: pdfY(ctx.y + 10),
-      font: bold, size: 9, color: C.navy,
-    });
-    ctx.y += 14;
-    for (const mo of queryVisibility.missedOpportunities) {
-      text(ctx, `• ${mo}`, MARGIN + 8, regular, 9, C.red, CONTENT_W - 8);
+  // ── MISSING / UNCONFIRMED FOOTPRINT ───────────────────────────────────────
+  if (result.missingFootprintNote || result.dataAggregatorNote) {
+    sectionHeader(ctx, "Missing or unconfirmed high-authority footprint");
+
+    if (result.missingFootprintNote) {
+      dt(ctx.page, "Not detected in this audit (Unverified absence):", ML, ctx.y, bold, 10, C.black);
+      ctx.y += 15;
+      drawWrapped(ctx, result.missingFootprintNote, ML, reg, 10, C.black, CW);
+      ctx.y += 8;
     }
-    ctx.y += 4;
+    if (result.dataAggregatorNote) {
+      dt(ctx.page, "Data aggregator presence:", ML, ctx.y, bold, 10, C.black);
+      ctx.y += 15;
+      drawWrapped(ctx, result.dataAggregatorNote, ML, reg, 10, C.black, CW);
+      ctx.y += 8;
+    }
   }
 
-  if (queryVisibility.serviceAreaExpansion) {
-    ensureSpace(ctx, 20);
-    ctx.page.drawText("Service Area Expansion:", {
-      x: MARGIN, y: pdfY(ctx.y + 10),
-      font: bold, size: 9, color: C.navy,
-    });
-    ctx.y += 14;
-    text(ctx, queryVisibility.serviceAreaExpansion, MARGIN, regular, 9, C.gray, CONTENT_W);
-  }
+  // ── VISIBILITY SCORE ───────────────────────────────────────────────────────
+  sectionHeader(ctx, "Visibility Score");
 
-  // ── Footer on last page ───────────────────────────────────────────────────
-  ctx.page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: 30, color: C.navy });
-  const footerTxt = `Generated ${auditDate.toLocaleDateString()} · NEO Marketing Hub · Powered by Claude AI`;
-  const fW = regular.widthOfTextAtSize(footerTxt, 8);
-  ctx.page.drawText(footerTxt, {
-    x: (PAGE_W - fW) / 2, y: 10,
-    font: regular, size: 8, color: C.white,
+  const scoreCategories = [
+    { label: "Listings Health",              data: sBreak.listingsHealth },
+    { label: "Reviews and Reputation",       data: sBreak.reviews },
+    { label: "Website Local Relevance",      data: sBreak.websiteLocalRelevance },
+    { label: "Brand and Entity Consistency", data: sBreak.brandConsistency },
+    { label: "AI Search Readiness",          data: sBreak.aiSearchReadiness },
+  ];
+
+  scoreCategories.forEach((cat, i) => {
+    need(ctx, 50);
+
+    // "N) Category: X / Y"
+    const prefix  = `${i + 1}) ${cat.label}: `;
+    const scoreStr = `${cat.data.score ?? 0} / ${cat.data.max}`;
+    const prefW   = bold.widthOfTextAtSize(prefix, 11);
+    dt(ctx.page, prefix, ML, ctx.y, bold, 11, C.black);
+    dt(ctx.page, scoreStr, ML + prefW, ctx.y, bold, 11, scoreColor(Math.round(((cat.data.score ?? 0) / (cat.data.max)) * 100)));
+    ctx.y += 18;
+
+    // Bullet paragraph explanation
+    if (cat.data.notes) {
+      bullet(ctx, cat.data.notes, C.black, 9.5);
+    }
+    ctx.y += 8;
   });
 
-  const bytes = await doc.save();
+  // ── QUERY VISIBILITY MAP ───────────────────────────────────────────────────
+  sectionHeader(ctx, "Query Visibility Map");
+
+  if (qv.branded) {
+    need(ctx, 28);
+    dt(ctx.page, "Current branded visibility", ML, ctx.y, bold, 10.5, C.black);
+    ctx.y += 16;
+    bullet(ctx, qv.branded, C.black, 9.5);
+    ctx.y += 6;
+  }
+
+  if (qv.nonBranded) {
+    need(ctx, 28);
+    dt(ctx.page, "Current non-branded visibility", ML, ctx.y, bold, 10.5, C.black);
+    ctx.y += 16;
+    bullet(ctx, qv.nonBranded, C.black, 9.5);
+    ctx.y += 6;
+  }
+
+  if (qv.topicClusters?.length) {
+    need(ctx, 28);
+    dt(ctx.page, "Best current topic clusters", ML, ctx.y, bold, 10.5, C.black);
+    ctx.y += 16;
+    for (const tc of qv.topicClusters) {
+      bullet(ctx, tc, C.black, 9.5);
+    }
+    ctx.y += 6;
+  }
+
+  if (qv.missedOpportunities?.length) {
+    need(ctx, 30);
+    dt(ctx.page, "Missed high-intent search opportunities", ML, ctx.y, bold, 10.5, C.black);
+    ctx.y += 14;
+    dt(ctx.page, "You currently appear under-optimized for these query clusters:", ML, ctx.y, reg, 10, C.teal);
+    ctx.y += 16;
+
+    for (const opp of qv.missedOpportunities) {
+      need(ctx, 20);
+      // Split "Category: items" into bold label + regular items
+      const ci = opp.indexOf(":");
+      if (ci > 0 && ci < 40) {
+        const catLabel = opp.slice(0, ci + 1);
+        const catItems = opp.slice(ci + 1).trimStart();
+        const clW = bold.widthOfTextAtSize(catLabel + " ", 10);
+        dt(ctx.page, "•", ML + 8, ctx.y, bold, 10, C.black);
+        dt(ctx.page, catLabel, ML + 18, ctx.y, bold, 10, C.black);
+        drawWrapped(ctx, catItems, ML + 18 + clW, reg, 10, C.black, CW - 18 - clW);
+      } else {
+        bullet(ctx, opp, C.black, 10);
+      }
+      ctx.y += 2;
+    }
+    ctx.y += 6;
+  }
+
+  // ── SERVICE AREA EXPANSION ─────────────────────────────────────────────────
+  if (qv.serviceAreaExpansion) {
+    sectionHeader(ctx, "Service area expansion opportunity");
+    bullet(ctx, qv.serviceAreaExpansion, C.black, 9.5);
+    ctx.y += 8;
+  }
+
+  // ── FOOTER on last page ────────────────────────────────────────────────────
+  const footerY = PH - 28;
+  ctx.page.drawRectangle({ x: 0, y: 0, width: PW, height: 28, color: C.navy });
+  const footerText = `NEO Home Loans Visibility Audit  |  ${advisor.name}  |  Generated ${auditDate.toLocaleDateString()}  |  Powered by Claude AI`;
+  const fw = reg.widthOfTextAtSize(footerText, 7.5);
+  ctx.page.drawText(footerText, {
+    x: (PW - fw) / 2,
+    y: 9,
+    font: reg,
+    size: 7.5,
+    color: C.white,
+  });
+
+  // suppress unused variable warning
+  void footerY;
+
+  const bytes = await ctx.doc.save();
   return Buffer.from(bytes);
 }
