@@ -24,6 +24,14 @@ export async function POST(
     return NextResponse.json({ error: "Advisor not found" }, { status: 404 });
   }
 
+  // Pre-flight check
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json(
+      { error: "ANTHROPIC_API_KEY is not set in environment variables. Add it in Vercel → Settings → Environment Variables." },
+      { status: 500 }
+    );
+  }
+
   // Create audit record with RUNNING status
   const audit = await db.visibilityAudit.create({
     data: { advisorId, status: "RUNNING" },

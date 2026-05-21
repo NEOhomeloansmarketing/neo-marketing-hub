@@ -231,7 +231,8 @@ function AdvisorDrawerContent({
       });
       const data = await res.json();
       if (!res.ok) {
-        setAuditError(data?.error ?? `Error ${res.status}`);
+        const msg = data?.details ? `${data.error}: ${data.details}` : (data?.error ?? `Error ${res.status}`);
+        setAuditError(msg);
         return;
       }
       setLatestAudit(data as VisibilityAuditRecord);
