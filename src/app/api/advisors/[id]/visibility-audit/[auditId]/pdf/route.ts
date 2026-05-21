@@ -37,13 +37,15 @@ export async function GET(
   }
 
   const result: AuditResult = {
-    extractedNap: (audit.extractedNap ?? {}) as AuditResult["extractedNap"],
-    score: audit.score ?? 0,
-    scoreBreakdown: audit.scoreBreakdown as AuditResult["scoreBreakdown"],
-    actionItems: (audit.actionItems ?? []) as AuditResult["actionItems"],
-    conflicts: (audit.conflicts ?? []) as string[],
-    socials: (audit.socials ?? []) as AuditResult["socials"],
-    queryVisibility: audit.queryVisibility as AuditResult["queryVisibility"],
+    extractedNap:    (audit.extractedNap   ?? {})  as AuditResult["extractedNap"],
+    score:           audit.score ?? 0,
+    // scoreBreakdown and queryVisibility may be null for old/failed audits;
+    // generateAuditPdf has its own null-safe defaults so passing null is fine.
+    scoreBreakdown:  (audit.scoreBreakdown  ?? null) as AuditResult["scoreBreakdown"],
+    actionItems:     (audit.actionItems     ?? [])   as AuditResult["actionItems"],
+    conflicts:       (audit.conflicts       ?? [])   as string[],
+    socials:         (audit.socials         ?? [])   as AuditResult["socials"],
+    queryVisibility: (audit.queryVisibility ?? null) as AuditResult["queryVisibility"],
   };
 
   const pdfBuffer = await generateAuditPdf(result, advisor, audit.completedAt ?? audit.createdAt);

@@ -1,4 +1,4 @@
-import PDFDocument from "pdfkit";
+import type PDFDocumentType from "pdfkit";
 import type { AuditResult } from "./visibility-audit";
 
 interface AdvisorInfo {
@@ -58,6 +58,29 @@ export async function generateAuditPdf(
   advisor: AdvisorInfo,
   auditDate: Date
 ): Promise<Buffer> {
+  // Dynamic require keeps pdfkit out of the webpack bundle on Vercel
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const PDFDocument = require("pdfkit") as typeof PDFDocumentType;
+
+  // Null-safe defaults so a partial audit never crashes the generator
+  const scoreBreakdown = result.scoreBreakdown ?? {
+    listingsHealth:         { score: 0, max: 30, notes: "No data" },
+    reviews:                { score: 0, max: 20, notes: "No data" },
+    websiteLocalRelevance:  { score: 0, max: 20, notes: "No data" },
+    brandConsistency:       { score: 0, max: 15, notes: "No data" },
+    aiSearchReadiness:      { score: 0, max: 15, notes: "No data" },
+  };
+  const queryVisibility = result.queryVisibility ?? {
+    branded: "",
+    nonBranded: "",
+    topicClusters: [],
+    missedOpportunities: [],
+    serviceAreaExpansion: "",
+  };
+  const actionItems  = result.actionItems  ?? [];
+  const conflicts    = result.conflicts    ?? [];
+  const socials      = result.socials      ?? [];
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "LETTER",
@@ -152,7 +175,7 @@ export async function generateAuditPdf(
     // ── Priority Action Plan ─────────────────────────────────────────────────
     y = drawSectionHeader(doc, "Priority Action Plan", y);
 
-    const items = result.actionItems.slice(0, 10);
+    const items = actionItems.slice(0, 10);
     for (const item of items) {
       const priorityColor = item.priority <= 3 ? "#dc2626" : item.priority <= 7 ? "#d97706" : "#16a34a";
       doc.rect(40, y, 18, 14).fill(priorityColor);
@@ -190,10 +213,10 @@ export async function generateAuditPdf(
     y += 4;
 
     // ── Core Identity Conflicts ──────────────────────────────────────────────
-    if (result.conflicts && result.conflicts.length > 0) {
+    if (conflicts.length > 0) {
       if (y > 650) { doc.addPage(); y = 40; }
       y = drawSectionHeader(doc, "Core Identity Conflicts", y);
-      for (const conflict of result.conflicts) {
+      for (const conflict of conflicts) {
         doc
           .fillColor(NAVY)
           .font("Helvetica")
@@ -206,7 +229,7 @@ export async function generateAuditPdf(
     }
 
     // ── Links / Socials ──────────────────────────────────────────────────────
-    if (result.socials && result.socials.length > 0) {
+    if (socials.length > 0) {
       if (y > 600) { doc.addPage(); y = 40; }
       y = drawSectionHeader(doc, "Links / Socials", y);
 
@@ -217,7 +240,7 @@ export async function generateAuditPdf(
         MISSING: "#64748b",
       };
 
-      for (const social of result.socials) {
+      for (const social of socials) {
         const badgeColor = statusColors[social.status] ?? GRAY_TEXT;
         doc.rect(40, y, 50, 13).fill(badgeColor);
         doc
@@ -259,11 +282,11 @@ export async function generateAuditPdf(
     y = drawSectionHeader(doc, "Visibility Score Breakdown", y);
 
     const categories = [
-      { label: "Listings Health", data: result.scoreBreakdown.listingsHealth },
-      { label: "Reviews", data: result.scoreBreakdown.reviews },
-      { label: "Website Local Relevance", data: result.scoreBreakdown.websiteLocalRelevance },
-      { label: "Brand Consistency", data: result.scoreBreakdown.brandConsistency },
-      { label: "AI Search Readiness", data: result.scoreBreakdown.aiSearchReadiness },
+      { label: "Listings Health", data: scoreBreakdown.listingsHealth },
+      { label: "Reviews", data: scoreBreakdown.reviews },
+      { label: "Website Local Relevance", data: scoreBreakdown.websiteLocalRelevance },
+      { label: "Brand Consistency", data: scoreBreakdown.brandConsistency },
+      { label: "AI Search Readiness", data: scoreBreakdown.aiSearchReadiness },
     ];
 
     for (const cat of categories) {
@@ -303,7 +326,7 @@ export async function generateAuditPdf(
     if (y > 580) { doc.addPage(); y = 40; }
     y = drawSectionHeader(doc, "Query Visibility Map", y);
 
-    const qv = result.queryVisibility;
+    const qv = queryVisibility;
 
     doc
       .fillColor(NAVY)
