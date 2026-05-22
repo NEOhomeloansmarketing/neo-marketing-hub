@@ -963,19 +963,23 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
   const openAdvisor = advisors.find((a) => a.id === openId) ?? null;
   const totalSocials = advisors.reduce((s, a) => s + a.channels.filter((c) => CHANNEL_DEFS.some((d) => d.key === c.platform)).length, 0);
   const totalWebsites = advisors.reduce((s, a) => s + a.channels.filter((c) => c.platform === "WEBSITE").length, 0);
-  const missingAudit  = advisors.filter((a) => !a.auditFormUrl).length;
-  const napUploaded   = advisors.filter((a) =>  a.napFormUrl).length;
-  const napMissing    = advisors.length - napUploaded;
+  const missingAudit       = advisors.filter((a) => !a.auditFormUrl).length;
+  const napUploaded        = advisors.filter((a) =>  a.napFormUrl).length;
+  const napMissing         = advisors.length - napUploaded;
+  const auditsCompleted    = advisors.filter((a) => a.visibilityAudits?.some((v) => v.status === "COMPLETE")).length;
+  const auditsMissing      = advisors.length - auditsCompleted;
 
   return (
     <div className="space-y-5">
       {/* Stats */}
-      <div className="grid grid-cols-12 gap-3">
-        <StatCard span={3} label="Advisors" value={String(advisors.length)} delta="across divisions" />
-        <StatCard span={3} label="Websites tracked" value={String(totalWebsites)} delta="incl. microsites" tone="indigo" />
-        <StatCard span={3} label="NAP forms uploaded" value={`${napUploaded} / ${advisors.length}`}
+      <div className="grid grid-cols-10 gap-3">
+        <StatCard span={2} label="Advisors" value={String(advisors.length)} delta="across divisions" />
+        <StatCard span={2} label="Websites tracked" value={String(totalWebsites)} delta="incl. microsites" tone="indigo" />
+        <StatCard span={2} label="NAP forms uploaded" value={`${napUploaded} / ${advisors.length}`}
           delta={napMissing === 0 ? "All uploaded" : `${napMissing} missing`} tone={napMissing === 0 ? "green" : "default"} />
-        <StatCard span={3} label="Missing audit form" value={String(missingAudit)}
+        <StatCard span={2} label="Audits completed" value={`${auditsCompleted} / ${advisors.length}`}
+          delta={auditsMissing === 0 ? "All audited" : `${auditsMissing} pending`} tone={auditsMissing === 0 ? "green" : "default"} />
+        <StatCard span={2} label="Missing audit form" value={String(missingAudit)}
           delta={missingAudit === 0 ? "All complete" : "Pending review"} tone={missingAudit === 0 ? "green" : "default"} />
       </div>
 

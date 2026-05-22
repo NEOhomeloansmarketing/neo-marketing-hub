@@ -3,10 +3,11 @@ interface StatCardProps {
   value: string;
   delta?: string;
   tone?: "default" | "green" | "indigo" | "danger";
-  span?: 3 | 4 | 6 | 12;
+  span?: 2 | 3 | 4 | 6 | 12;
 }
 
 const SPAN_CLASS: Record<number, string> = {
+  2: "col-span-6 md:col-span-2",
   3: "col-span-12 md:col-span-3",
   4: "col-span-12 md:col-span-4",
   6: "col-span-12 md:col-span-6",
