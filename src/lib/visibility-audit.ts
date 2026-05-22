@@ -299,19 +299,74 @@ Return ONLY raw JSON — no markdown, no code fences, no explanation:
 
   messageContent.push({ type: "text", text: prompt });
 
+  // Prefill the assistant turn with `{` — forces Claude to output pure JSON
+  // continuation without any preamble, markdown, or code fences.
   const message = await client.messages.create({
     model: "claude-sonnet-4-5",
     max_tokens: 8192,
-    messages: [{ role: "user", content: messageContent }],
+    messages: [
+      { role: "user", content: messageContent },
+      { role: "assistant", content: [{ type: "text", text: "{" }] },
+    ],
   });
 
-  const responseText =
+  const continuation =
     message.content[0].type === "text" ? message.content[0].text : "";
 
-  let jsonStr = responseText.trim();
-  const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) jsonStr = jsonMatch[1].trim();
+  // Restore the opening brace we used as the prefill seed
+  let jsonStr = ("{" + continuation).trim();
 
-  const result: AuditResult = JSON.parse(jsonStr);
+  // Strip any accidental markdown fences the model might still emit
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+  // Repair common JSON issues Claude sometimes produces
+  jsonStr = repairJson(jsonStr);
+
+  let result: AuditResult;
+  try {
+    result = JSON.parse(jsonStr);
+  } catch (err) {
+    // Log enough context to diagnose the bad region without flooding logs
+    const pos = (err as SyntaxError).message.match(/position (\d+)/)?.[1];
+    const at = pos ? Number(pos) : jsonStr.length;
+    console.error(
+      "[visibility-audit] JSON parse failed:",
+      (err as SyntaxError).message,
+      "\n--- surrounding context ---\n",
+      jsonStr.slice(Math.max(0, at - 120), at + 120),
+      "\n--- end context ---"
+    );
+    throw err;
+  }
   return result;
+}
+
+/**
+ * Best-effort JSON repair for the subset of issues Claude sometimes produces:
+ *  - Trailing commas before } or ]
+ *  - Single-line // comments
+ *  - Multi-line /* … *\/ comments
+ *  - Em-dashes (—) that break string parsing (replaced with hyphen)
+ *  - Unescaped newlines inside string values
+ */
+function repairJson(raw: string): string {
+  let s = raw;
+
+  // Remove // comments (only outside string literals — simple heuristic)
+  s = s.replace(/(?<![":,\w])\/\/[^\n]*/g, "");
+
+  // Remove /* … */ block comments
+  s = s.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Remove trailing commas before closing braces/brackets
+  s = s.replace(/,(\s*[}\]])/g, "$1");
+
+  // Replace em-dash with regular hyphen inside strings
+  s = s.replace(/—/g, "-");
+
+  // Replace literal tab characters inside strings with \t
+  s = s.replace(/\t/g, "\\t");
+
+  return s;
 }
