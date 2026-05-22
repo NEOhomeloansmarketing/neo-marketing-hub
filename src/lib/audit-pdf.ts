@@ -307,7 +307,16 @@ export async function generateAuditPdf(
     need(ctx, 16);
     const labelStr = `${label} - `;
     const labelW   = bold.widthOfTextAtSize(labelStr, 10);
-    dt(ctx.page, "◦", ML + 10, ctx.y, reg, 10, C.black); // open bullet ◦
+    // Draw a small open circle as a bullet (◦ is not in WinAnsi, so we draw it)
+    ctx.page.drawEllipse({
+      x: ML + 13,
+      y: py(ctx.y + 5, 0) + 2,
+      xScale: 3,
+      yScale: 3,
+      borderColor: C.black,
+      borderWidth: 0.7,
+      color: C.white,
+    });
     dt(ctx.page, labelStr, ML + 22, ctx.y, bold, 10, C.black);
     drawWrapped(ctx, value, ML + 22 + labelW, reg, 10, C.black, CW - 22 - labelW);
     ctx.y += 2;
