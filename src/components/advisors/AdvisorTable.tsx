@@ -82,6 +82,8 @@ const CHECKLIST: { label: string; field: ChecklistField }[] = [
   { label: "Canva", field: "canvaUrl" },
   { label: "Social Tool", field: "socialToolUrl" },
 ];
+// NAP Form is read-only — auto-checks when napFormUrl is present
+const NAP_CHECKLIST_LABEL = "NAP Form";
 
 function ChannelChip({ def, channel }: { def: (typeof CHANNEL_DEFS)[0]; channel?: AdvisorChannel }) {
   const present = !!channel;
@@ -664,6 +666,37 @@ ${advisor.napNotes ? `<div class="section"><div class="section-title">NAP Notes<
               </button>
             );
           })}
+
+          {/* NAP Form — read-only, auto-checks when napFormUrl is set */}
+          {(() => {
+            const checked = !!advisor.napFormUrl;
+            return (
+              <div
+                title={checked ? `NAP form uploaded — click to view` : "No NAP form uploaded yet"}
+                className="flex items-center gap-3 rounded-lg p-3"
+                style={{ background: "#0a2540", border: `1px solid ${checked ? "#5bcbf544" : "#1d4368"}` }}
+              >
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md"
+                  style={{ background: checked ? "#5bcbf51f" : "#14375a", color: checked ? "#5bcbf5" : "#5d6566", border: `1px solid ${checked ? "#5bcbf544" : "#1d4368"}` }}>
+                  {checked ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : <span className="text-[10px]">—</span>}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[12.5px] font-semibold text-slate-100">{NAP_CHECKLIST_LABEL}</div>
+                  <div className="text-[10.5px]" style={{ color: checked ? "#5bcbf5" : "#858889" }}>
+                    {checked ? (
+                      <a href={advisor.napFormUrl!} target="_blank" rel="noopener" className="hover:underline" onClick={(e) => e.stopPropagation()}>
+                        View form
+                      </a>
+                    ) : "Not uploaded"}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -788,7 +821,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
       "Name", "NMLS #", "Brand / Team", "Division Lead", "Email", "Phone",
       "Street Address", "City", "State", "Zip", "Region", "License States",
       "Status", "Next Audit Due",
-      "Audit Form", "Matrix", "Canva", "Social Tool",
+      "Audit Form", "Matrix", "Canva", "Social Tool", "NAP Form",
       "Website", "Facebook", "Instagram", "LinkedIn", "TikTok", "YouTube", "Google Business", "Zillow", "Yelp",
       "Open Issues",
     ];
@@ -812,6 +845,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
           a.matrixUrl ? "Complete" : "Pending",
           a.canvaUrl ? "Complete" : "Pending",
           a.socialToolUrl ? "Complete" : "Pending",
+          a.napFormUrl ? a.napFormUrl : "Not uploaded",
           ch("WEBSITE"), ch("FACEBOOK"), ch("INSTAGRAM"), ch("LINKEDIN"),
           ch("TIKTOK"), ch("YOUTUBE"), ch("GOOGLE_BUSINESS"), ch("ZILLOW"), ch("YELP"),
           String(a.openIssues),
@@ -929,7 +963,9 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
   const openAdvisor = advisors.find((a) => a.id === openId) ?? null;
   const totalSocials = advisors.reduce((s, a) => s + a.channels.filter((c) => CHANNEL_DEFS.some((d) => d.key === c.platform)).length, 0);
   const totalWebsites = advisors.reduce((s, a) => s + a.channels.filter((c) => c.platform === "WEBSITE").length, 0);
-  const missingAudit = advisors.filter((a) => !a.auditFormUrl).length;
+  const missingAudit  = advisors.filter((a) => !a.auditFormUrl).length;
+  const napUploaded   = advisors.filter((a) =>  a.napFormUrl).length;
+  const napMissing    = advisors.length - napUploaded;
 
   return (
     <div className="space-y-5">
@@ -937,7 +973,8 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
       <div className="grid grid-cols-12 gap-3">
         <StatCard span={3} label="Advisors" value={String(advisors.length)} delta="across divisions" />
         <StatCard span={3} label="Websites tracked" value={String(totalWebsites)} delta="incl. microsites" tone="indigo" />
-        <StatCard span={3} label="Social accounts" value={String(totalSocials)} delta="8 channels" />
+        <StatCard span={3} label="NAP forms uploaded" value={`${napUploaded} / ${advisors.length}`}
+          delta={napMissing === 0 ? "All uploaded" : `${napMissing} missing`} tone={napMissing === 0 ? "green" : "default"} />
         <StatCard span={3} label="Missing audit form" value={String(missingAudit)}
           delta={missingAudit === 0 ? "All complete" : "Pending review"} tone={missingAudit === 0 ? "green" : "default"} />
       </div>
@@ -1080,7 +1117,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
           {/* Header */}
           <div className="grid items-center gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase"
             style={{
-              gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
+              gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
               borderBottom: "1px solid #1d4368", color: "#858889", background: "#0a2540", letterSpacing: "0.1em",
             }}>
             <button
@@ -1106,6 +1143,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
             <div>Name</div><div>Brand</div><div>NMLS #</div><div>Division Lead</div><div>Location</div>
             <div className="text-center">Audit</div><div className="text-center">Matrix</div>
             <div className="text-center">Canva</div><div className="text-center">Social Tool</div>
+            <div className="text-center">NAP Form</div>
             <div>Channels</div><div />
           </div>
 
@@ -1120,7 +1158,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
                 onKeyDown={(e) => { if (e.key === "Enter") setOpenId(a.id); }}
                 className="grid w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.02]"
                 style={{
-                  gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
+                  gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
                   borderBottom: i === filtered.length - 1 ? "none" : "1px solid #1d4368",
                   background: isSelected ? "rgba(91,203,245,0.04)" : undefined,
                 }}
@@ -1178,6 +1216,36 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
                     </div>
                   );
                 })}
+
+                {/* NAP Form — read-only indicator, auto-checks when napFormUrl present */}
+                <div className="flex justify-center">
+                  {a.napFormUrl ? (
+                    <a
+                      href={a.napFormUrl}
+                      target="_blank"
+                      rel="noopener"
+                      title="NAP Form uploaded — click to view"
+                      onClick={(e) => e.stopPropagation()}
+                      className="grid h-5 w-5 place-items-center rounded transition hover:scale-110"
+                      style={{
+                        background: "#5bcbf522",
+                        border: "1px solid #5bcbf544",
+                        color: "#5bcbf5",
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </a>
+                  ) : (
+                    <div
+                      className="grid h-5 w-5 place-items-center rounded"
+                      title="No NAP form uploaded"
+                      style={{ background: "#0a2540", border: "1px solid #1d4368", color: "#5d6566" }}
+                    />
+                  )}
+                </div>
+
                 <div className="flex flex-wrap items-center gap-1">
                   {CHANNEL_DEFS.map((def) => {
                     const ch = a.channels.find((c) => c.platform === def.key);
