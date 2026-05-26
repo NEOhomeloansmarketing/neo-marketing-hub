@@ -75,32 +75,36 @@ export async function POST(
       },
     });
 
-    // Find Colin Jenson to assign tasks
+    // Find Colin Jenson to assign the single website-updates task
     const colin = await db.user.findFirst({
       where: { name: { contains: "Colin Jenson", mode: "insensitive" } },
     });
 
-    // Create tasks for each action item
-    for (const item of result.actionItems) {
-      const priority =
-        item.priority <= 3 ? "HIGH" : item.priority <= 7 ? "MEDIUM" : "LOW";
+    // Create ONE consolidated task covering all website / online visibility updates
+    if (result.actionItems.length > 0) {
+      const auditDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      const actionLines = result.actionItems
+        .map((item) => {
+          const urlPart = item.url ? `\n   ${item.url}` : "";
+          return `${item.priority}. [${item.platform}] ${item.action}${urlPart}`;
+        })
+        .join("\n\n");
 
-      // Title: [AdvisorName] [Platform] — action (truncated cleanly)
-      const prefix = `${advisor.name} · ${item.platform} — `;
-      const maxAction = 140 - prefix.length;
-      const title = `${prefix}${item.action.slice(0, maxAction)}`;
-
-      const descLines = [
-        `Visibility audit action item for ${advisor.name} (NMLS ${advisor.nmlsNumber}).`,
-        item.url ? `URL: ${item.url}` : null,
-        `Priority #${item.priority} from audit on ${new Date().toLocaleDateString()}.`,
-      ].filter(Boolean).join("\n");
+      const websiteChannel = advisor.channels.find((c) => c.platform === "WEBSITE");
+      const websiteNote = websiteChannel ? `Website: ${websiteChannel.url}` : "Website: not on file";
 
       await db.task.create({
         data: {
-          title,
-          description: descLines,
-          priority: priority as "HIGH" | "MEDIUM" | "LOW",
+          title: `${advisor.name} — Website & Online Visibility Updates`,
+          description: [
+            `Visibility audit completed for ${advisor.name} (NMLS ${advisor.nmlsNumber}) on ${auditDate}.`,
+            `Score: ${result.score}/100`,
+            websiteNote,
+            ``,
+            `Action Items:`,
+            actionLines,
+          ].join("\n"),
+          priority: "HIGH",
           status: "TODO",
           ownerId: colin?.id ?? user.id,
           source: "MANUAL",

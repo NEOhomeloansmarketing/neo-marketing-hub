@@ -413,6 +413,8 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   const [query, setQuery] = useState("");
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const [composing, setComposing] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const searchParams = useSearchParams();
 
   // Auto-open task drawer when ?open=<taskId> is in the URL
@@ -442,6 +444,19 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
     });
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  const bulkDelete = async () => {
+    if (!confirm(`Delete ${selected.size} task${selected.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    await Promise.all(Array.from(selected).map((id) => fetch(`/api/tasks/${id}`, { method: "DELETE" })));
+    setTasks((ts) => ts.filter((t) => !selected.has(t.id)));
+    setSelected(new Set());
+    setBulkDeleting(false);
   };
 
   const visible = useMemo(() => {
@@ -573,11 +588,43 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
                 onToggle={toggle}
                 onOpen={setOpenTask}
                 defaultOpen={bucket.id !== "done"}
+                selected={selected}
+                onToggleSelect={toggleSelect}
               />
             );
           })
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
+          style={{ background: "#0e2b48", border: "1px solid #1d4368", minWidth: 300 }}
+        >
+          <span className="text-[13px] font-semibold text-slate-100">
+            {selected.size} task{selected.size !== 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-auto rounded-md px-3 py-1.5 text-[11.5px] font-medium transition hover:brightness-110"
+            style={{ background: "#14375a", color: "#a8aaab", border: "1px solid #1d4368" }}
+          >
+            Deselect
+          </button>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkDeleting}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+            style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+            </svg>
+            {bulkDeleting ? "Deleting…" : `Delete ${selected.size}`}
+          </button>
+        </div>
+      )}
 
       {/* Rich new-task panel */}
       {composing && (
@@ -612,14 +659,29 @@ function BucketSection({
   onToggle,
   onOpen,
   defaultOpen,
+  selected,
+  onToggleSelect,
 }: {
   bucket: (typeof DUE_BUCKETS)[0];
   tasks: Task[];
   onToggle: (id: string) => void;
   onOpen: (t: Task) => void;
   defaultOpen: boolean;
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const allSelected = tasks.length > 0 && tasks.every((t) => selected.has(t.id));
+  const someSelected = tasks.some((t) => selected.has(t.id));
+
+  const toggleAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    tasks.forEach((t) => {
+      const inSet = selected.has(t.id);
+      if (allSelected ? inSet : !inSet) onToggleSelect(t.id);
+    });
+  };
+
   return (
     <section className="rounded-lg overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
       <button
@@ -642,7 +704,7 @@ function BucketSection({
           <div
             className="grid items-center gap-3 px-4 py-2 text-[10.5px] font-semibold uppercase"
             style={{
-              gridTemplateColumns: "20px 1fr 80px 100px 96px",
+              gridTemplateColumns: "16px 20px 1fr 80px 100px 96px",
               borderBottom: "1px solid #1d4368",
               borderTop: "1px solid #1d4368",
               color: "#858889",
@@ -650,10 +712,37 @@ function BucketSection({
               letterSpacing: "0.12em",
             }}
           >
+            {/* Select-all checkbox for this bucket */}
+            <button
+              onClick={toggleAll}
+              className="grid h-4 w-4 place-items-center rounded transition"
+              style={{
+                background: allSelected ? "#5bcbf5" : someSelected ? "#14375a" : "#14375a",
+                border: `1px solid ${allSelected || someSelected ? "#5bcbf5" : "#1d4368"}`,
+              }}
+            >
+              {allSelected && (
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#061320" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+              {someSelected && !allSelected && (
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              )}
+            </button>
             <div /><div>Task</div><div>Priority</div><div>Due</div><div>Assignee</div>
           </div>
           {tasks.map((t) => (
-            <TaskRow key={t.id} task={t} onToggle={onToggle} onOpen={onOpen} />
+            <TaskRow
+              key={t.id}
+              task={t}
+              onToggle={onToggle}
+              onOpen={onOpen}
+              isSelected={selected.has(t.id)}
+              onToggleSelect={onToggleSelect}
+            />
           ))}
         </div>
       )}
@@ -661,14 +750,46 @@ function BucketSection({
   );
 }
 
-function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id: string) => void; onOpen: (t: Task) => void }) {
+function TaskRow({
+  task,
+  onToggle,
+  onOpen,
+  isSelected,
+  onToggleSelect,
+}: {
+  task: Task;
+  onToggle: (id: string) => void;
+  onOpen: (t: Task) => void;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
+}) {
   const done = task.status === "DONE";
   return (
     <div
       className="grid items-center gap-3 px-4 py-2.5 transition hover:bg-white/[0.02] cursor-pointer"
-      style={{ gridTemplateColumns: "20px 1fr 80px 100px 96px", borderBottom: "1px solid #1d4368" }}
+      style={{
+        gridTemplateColumns: "16px 20px 1fr 80px 100px 96px",
+        borderBottom: "1px solid #1d4368",
+        background: isSelected ? "rgba(91,203,245,0.04)" : undefined,
+      }}
       onClick={() => onOpen(task)}
     >
+      {/* Select checkbox */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id); }}
+        className="grid h-4 w-4 shrink-0 place-items-center rounded transition hover:scale-110"
+        style={{
+          background: isSelected ? "#5bcbf5" : "#14375a",
+          border: `1px solid ${isSelected ? "#5bcbf5" : "#1d4368"}`,
+        }}
+      >
+        {isSelected && (
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#061320" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        )}
+      </button>
+      {/* Complete toggle */}
       <button
         onClick={(e) => { e.stopPropagation(); onToggle(task.id); }}
         className="grid h-5 w-5 place-items-center rounded-full transition"
