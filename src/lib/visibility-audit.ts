@@ -158,6 +158,7 @@ CORE RULES (enforce strictly):
 - Never guarantee rankings, verification, leads, or outcomes.
 - Write as if advising a real person — plain English, specific, actionable.
 - Every action item must reference THIS advisor's actual data. No generic advice.
+- NEVER flag missing or incomplete NMLS numbers as an action item or conflict. NMLS compliance is tracked separately and is not part of this audit.
 
 ${
   napForm
@@ -178,7 +179,7 @@ WHAT TO AUDIT:
 1. NAP inconsistencies — wrong phone number, old address, wrong suite, name not matching exactly, "NEO" not fully capitalized anywhere
 2. Old employer branding — any prior company name (Cornerstone, Academy, loanDepot, etc.) on any live profile
 3. Duplicate or conflicting profiles — multiple LinkedIn/Instagram/YouTube accounts
-4. Incomplete profiles — missing bio, photos, hours, categories, NMLS disclosures
+4. Incomplete profiles — missing bio, photos, hours, categories (do NOT flag NMLS number — it is tracked separately)
 5. Missing high-authority platforms — GBP, BBB, Bing Places, Apple Maps, Experience.com, Yelp
 6. Review platform gaps and reputation signals
 7. Website local SEO — service area pages, local keywords, schema markup
