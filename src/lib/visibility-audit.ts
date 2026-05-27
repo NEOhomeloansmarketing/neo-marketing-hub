@@ -21,6 +21,18 @@ export interface AuditResult {
   // Canonical NAP
   extractedNap: ExtractedNap;
 
+  // Canonical block — exact NAP text formatted for use everywhere online
+  canonicalBlock?: string;
+
+  // One-line canonical public display format
+  canonicalPublicDisplay?: string;
+
+  // Positioning statement to use everywhere (1-2 sentences)
+  positioningStatement?: string;
+
+  // Best difference language (advisor's unique differentiator)
+  bestDifferenceLanguage?: string;
+
   // Overall score
   score: number;
 
@@ -37,12 +49,25 @@ export interface AuditResult {
   actionItems: Array<{
     priority: number;
     platform: string;
-    action: string;  // Full text: "Bold key term: description"
-    url?: string;    // Link shown as "CLICK HERE" or small gray URL
+    action: string;  // Full text: "Bold key term: 1-2 sentence description"
+    url?: string;    // Direct link — rendered as "CLICK HERE"
   }>;
 
-  // Checkbox-style conflict bullets
+  // Grouped conflicts: "Main conflict N: [Type] — explanation"
   conflicts: string[];
+
+  // New channels to set up
+  newChannels?: {
+    required: string[];
+    recommended: string[];
+    optional: string[];
+  };
+
+  // Competitive gap analysis
+  competitiveGapAnalysis?: {
+    advantages: string[];
+    gaps: string[];
+  };
 
   // Audience analysis paragraphs
   mainAudienceServed?: string;
@@ -60,6 +85,9 @@ export interface AuditResult {
   // Missing footprint notes
   missingFootprintNote?: string;
   dataAggregatorNote?: string;
+
+  // Content themes specific to this advisor
+  contentThemes?: string[];
 
   // Query visibility
   queryVisibility: {
@@ -153,10 +181,10 @@ CORE RULES (enforce strictly):
 - Always capitalize all three letters in NEO. Never write "Neo" or "neo."
 - NEO Home Loans is an Equal Housing Opportunity Lender.
 - Corporate lender: Better Mortgage Corporation, NMLS#330511.
-- Never use long em dashes.
+- Never use long em dashes (—). Use a regular hyphen (-) instead.
 - Never use generic AI filler, robotic phrasing, or bloated language.
 - Never guarantee rankings, verification, leads, or outcomes.
-- Write as if advising a real person — plain English, specific, actionable.
+- Write like a real strategist advising a real person — plain English, specific, short, actionable.
 - Every action item must reference THIS advisor's actual data. No generic advice.
 - NEVER flag missing or incomplete NMLS numbers as an action item or conflict. NMLS compliance is tracked separately and is not part of this audit.
 
@@ -173,37 +201,62 @@ PLATFORMS NOT YET FOUND IN THEIR PROFILE:
 ${missingPlatforms.length ? missingPlatforms.join(", ") : "All major platforms accounted for."}
 
 YOUR TASK:
-Perform a comprehensive, advisor-specific visibility audit. Every finding must reference actual data — specific platform names, specific URLs, specific wrong values vs. correct values.
+Perform a comprehensive, advisor-specific visibility audit. Every finding must reference actual data — specific platform names, specific URLs, specific wrong values vs. correct canonical values.
 
 WHAT TO AUDIT:
-1. NAP inconsistencies — wrong phone number, old address, wrong suite, name not matching exactly, "NEO" not fully capitalized anywhere
-2. Old employer branding — any prior company name (Cornerstone, Academy, loanDepot, etc.) on any live profile
-3. Duplicate or conflicting profiles — multiple LinkedIn/Instagram/YouTube accounts
-4. Incomplete profiles — missing bio, photos, hours, categories (do NOT flag NMLS number — it is tracked separately)
-5. Missing high-authority platforms — GBP, BBB, Bing Places, Apple Maps, Experience.com, Yelp
+1. NAP inconsistencies — wrong phone, old address, wrong suite, name mismatch, "NEO" not fully capitalized
+2. Old employer branding — any prior company name (Cornerstone, Academy, loanDepot, etc.) still live anywhere
+3. Duplicate or conflicting profiles — multiple LinkedIn/Instagram/YouTube accounts for the same person
+4. Incomplete profiles — missing bio, photos, hours, categories (do NOT flag NMLS — it is tracked separately)
+5. Missing high-authority platforms — GBP, BBB, Bing Places, Apple Maps, Experience.com, Yelp, Zillow
 6. Review platform gaps and reputation signals
 7. Website local SEO — service area pages, local keywords, schema markup
 8. AI search readiness — canonical entity signals, structured data, FAQ content
 
-SCORING (conservative — only award points with evidence):
+SCORING (conservative — only award points with real evidence):
 - Listings Health /30: NAP accuracy across directories, GBP/Zillow/BBB/Experience presence
 - Reviews & Reputation /20: review volume, recency, platform diversity, sentiment
-- Website Local Relevance /20: local keywords, service area pages, schema, mobile
+- Website Local Relevance /20: local keywords, service area pages, schema, mobile-friendly
 - Brand & Entity Consistency /15: identical name/title/photo/employer everywhere, no legacy branding
-- AI Search Readiness /15: clear canonical entity signals, FAQ content, structured data
+- AI Search Readiness /15: canonical entity signals, FAQ content, structured data
 
-ACTION ITEMS must be:
-- Numbered 1 through N (most urgent first)
-- Specific to THIS advisor's actual data (mention real platform names, real wrong values)
-- Written as direct instructions: "Update your [Platform] [field] from '[wrong]' to '[correct]'"
-- Include the actual profile URL when available
-- Format: start with a bold key term followed by a colon, then the specific action detail
-  Example: "Remove Old YouTube Channel: Your Cornerstone-era YouTube channel '[Channel Name]' is still live and publicly indexed. Remove or delete this channel to eliminate old employer branding."
+ACTION ITEMS — FORMAT RULES (critical):
+- Numbered 1 through N, most urgent first
+- SHORT — one bold key term, then 1-2 tight sentences. No paragraphs.
+- Reference real platform names and real wrong values found
+- If a URL is included, put it in the "url" field — rendered as a CLICK HERE button. Do NOT paste the URL into the action text.
+- Format: "Bold Key Term: One or two specific sentences telling them exactly what to fix."
+- Example good action item: "Remove Old YouTube Channel: Your Cornerstone-era channel is still live and publicly indexed. Delete it to eliminate old employer branding."
+- Example bad action item (too long/vague): "You should consider removing the old YouTube channel that may still reference previous employer branding because it could confuse visitors..."
 
-CONFLICT ITEMS must be:
-- Specific facts found that contradict the canonical NAP
-- Written as plain factual statements (not instructions)
-- Example: "LinkedIn title shows 'Loan Officer at Cornerstone' — canonical title is Mortgage Advisor at NEO Home Loans"
+CONFLICTS — FORMAT RULES:
+- Group conflicts by type: "Main conflict 1: Title inconsistency", "Main conflict 2: Location inconsistency", etc.
+- Each conflict is one specific factual statement — what the platform shows vs. what the canonical value is.
+- Example: "Main conflict 1: Title inconsistency - Facebook shows 'Loan Officer' but canonical title is 'Mortgage Advisor at NEO Home Loans'"
+
+CANONICAL BLOCK — FORMAT RULES:
+- Write the exact NAP text the advisor should copy-paste everywhere (GBP, Zillow, directories, website footer, etc.)
+- Multi-line, formatted for display. Include: Name, Title, Company, NMLS, Address, Phone, Website.
+- Example format:
+  [Name]
+  [Title] | NEO Home Loans
+  NMLS #[number]
+  [Address]
+  [Phone]
+  [Website]
+
+NEW CHANNELS — classify platforms not yet set up:
+- Required: High-authority platforms every advisor must have (GBP, BBB, Experience.com, etc.)
+- Recommended: Platforms that will materially help this advisor's specific market
+- Optional: Nice-to-have based on their niche or audience
+
+COMPETITIVE GAP ANALYSIS:
+- Advantages: things this advisor already does well vs. typical competitors in their market
+- Gaps: specific areas where competitors are beating them right now
+
+CONTENT THEMES:
+- List 5-8 specific recurring content topics tailored to THIS advisor's actual market, audience, and background
+- These are topics they should post about consistently — not generic mortgage content
 
 Return ONLY raw JSON — no markdown, no code fences, no explanation:
 
@@ -222,27 +275,41 @@ Return ONLY raw JSON — no markdown, no code fences, no explanation:
     "primaryUrlNote": "<correction note if URL should change, else empty>",
     "nmlsNumber": "<NMLS number>"
   },
+  "canonicalBlock": "<Exact multi-line NAP text for this advisor to copy-paste everywhere. Include name, title, company, NMLS, address, phone, website. Use line breaks (\\n) between fields.>",
+  "canonicalPublicDisplay": "<One-line version: 'Name | Title | NEO Home Loans | NMLS #XXXXX | City, State'>",
+  "positioningStatement": "<1-2 sentences. What this advisor should say everywhere about who they serve and what makes them different. Plain English, not corporate-speak.>",
+  "bestDifferenceLanguage": "<1 sentence. The one thing that makes this advisor genuinely stand out from other mortgage advisors in their market. Specific and real.>",
   "score": <0-100>,
   "scoreBreakdown": {
-    "listingsHealth":        { "score": <0-30>, "max": 30, "notes": "<2-4 sentences of specific findings. Reference actual platforms and what was found.>" },
-    "reviews":               { "score": <0-20>, "max": 20, "notes": "<2-4 sentences>" },
-    "websiteLocalRelevance": { "score": <0-20>, "max": 20, "notes": "<2-4 sentences>" },
-    "brandConsistency":      { "score": <0-15>, "max": 15, "notes": "<2-4 sentences. This is the biggest scoring area for cleanup — be specific about what is inconsistent.>" },
-    "aiSearchReadiness":     { "score": <0-15>, "max": 15, "notes": "<2-4 sentences>" }
+    "listingsHealth":        { "score": <0-30>, "max": 30, "notes": "<2-3 sentences of specific findings. Reference actual platforms and what was found.>" },
+    "reviews":               { "score": <0-20>, "max": 20, "notes": "<2-3 sentences>" },
+    "websiteLocalRelevance": { "score": <0-20>, "max": 20, "notes": "<2-3 sentences>" },
+    "brandConsistency":      { "score": <0-15>, "max": 15, "notes": "<2-3 sentences. Be specific about what is inconsistent and where.>" },
+    "aiSearchReadiness":     { "score": <0-15>, "max": 15, "notes": "<2-3 sentences>" }
   },
   "actionItems": [
     {
       "priority": <1 through N>,
       "platform": "<Platform name>",
-      "action": "<Bold key term: Specific action description referencing actual data>",
-      "url": "<direct URL to the profile or management page if known>"
+      "action": "<Bold Key Term: 1-2 tight sentences. Reference actual wrong value and correct value.>",
+      "url": "<direct URL to the profile or management page — omit if unknown>"
     }
   ],
   "conflicts": [
-    "<Specific conflict found. Format: '[Platform] shows [wrong value] — canonical [field] is [correct value]'>"
+    "<Main conflict 1: Type - specific platform shows wrong value, canonical value is X>",
+    "<Main conflict 2: Type - ...>"
   ],
-  "mainAudienceServed": "<1-2 paragraphs describing who this advisor actually serves, based on their NAP form and profile data. Include loan types, geography, niche markets, and any notable background.>",
-  "whoYouAppearToServe": "<1-2 paragraphs describing the audience and positioning that comes through in their public profiles — loan types, locations, recurring positioning themes from reviews/bios.>",
+  "newChannels": {
+    "required": ["<Platform: Why it's required for this advisor>"],
+    "recommended": ["<Platform: Why it fits this advisor's market>"],
+    "optional": ["<Platform: Nice-to-have for their niche>"]
+  },
+  "competitiveGapAnalysis": {
+    "advantages": ["<Specific thing this advisor does well vs competitors in their market>"],
+    "gaps": ["<Specific area where competitors are currently beating them>"]
+  },
+  "mainAudienceServed": "<1-2 paragraphs describing who this advisor actually serves based on their profile data. Include loan types, geography, niche markets.>",
+  "whoYouAppearToServe": "<1-2 paragraphs describing the audience that comes through in their public profiles — recurring positioning themes from reviews and bios.>",
   "perceivedStrengths": [
     "<Strength 1 based on review sentiment, bio content, or positioning signals>",
     "<Strength 2>",
@@ -253,24 +320,31 @@ Return ONLY raw JSON — no markdown, no code fences, no explanation:
       "platform": "<Platform>",
       "url": "<full URL>",
       "status": "<OK|ISSUE|REMOVE|MISSING>",
-      "notes": "<Specific issue or empty if OK. For REMOVE: explain why. For ISSUE: state what is wrong and what the correct value should be.>"
+      "notes": "<Specific issue or empty if OK. For REMOVE: explain why. For ISSUE: what is wrong and what correct value should be.>"
     }
   ],
-  "missingFootprintNote": "<Which specific high-authority platforms were not found in this audit and why they matter for visibility. Be specific about platform names.>",
+  "missingFootprintNote": "<Which specific high-authority platforms were not found and why they matter.>",
   "dataAggregatorNote": "<Assessment of data aggregator risk based on any address/phone inconsistencies found. Note this is an inference, not a verified finding.>",
+  "contentThemes": [
+    "<Specific recurring content topic tailored to this advisor's market and audience>",
+    "<Topic 2>",
+    "<Topic 3>",
+    "<Topic 4>",
+    "<Topic 5>"
+  ],
   "queryVisibility": {
-    "branded": "<Assessment of branded search visibility — searches containing the advisor's name or NMLS. What shows up, what's clean, what's fragmented.>",
-    "nonBranded": "<Assessment of non-branded local search visibility — mortgage + city searches. What's working, where competitors dominate.>",
+    "branded": "<Assessment of branded search visibility — searches containing advisor name or NMLS. What shows up, what's clean, what's fragmented.>",
+    "nonBranded": "<Assessment of non-branded local search — mortgage + city searches. What's working, where competitors dominate.>",
     "topicClusters": [
       "<Topic cluster already strong for this advisor>",
       "<Topic cluster 2>"
     ],
     "missedOpportunities": [
-      "Homebuyers: <specific search queries this advisor is missing, comma-separated>",
+      "Homebuyers: <specific search queries this advisor is missing>",
       "Refinancers/homeowners: <specific refinance/homeowner queries>",
       "Referral partners: <specific referral-partner queries>"
     ],
-    "serviceAreaExpansion": "<Specific cities/suburbs this advisor could expand into based on their market, with context.>"
+    "serviceAreaExpansion": "<Specific cities/suburbs this advisor could expand into, with context.>"
   }
 }`;
 

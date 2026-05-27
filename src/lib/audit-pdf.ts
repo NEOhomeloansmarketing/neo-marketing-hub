@@ -432,6 +432,48 @@ export async function generateAuditPdf(
     ctx.y += 10;
   }
 
+  // ── CANONICAL BLOCK ────────────────────────────────────────────────────────
+  if (result.canonicalBlock || result.canonicalPublicDisplay || result.positioningStatement || result.bestDifferenceLanguage) {
+    sectionHeader(ctx, `${firstName(advisor.name)} Canonical Block - KEEP CONSISTENT EVERYWHERE`);
+
+    if (result.canonicalBlock) {
+      const canonLines = result.canonicalBlock.split("\\n").join("\n").split("\n");
+      const boxH = canonLines.length * 14 + 16;
+      need(ctx, boxH + 20);
+      rect(ctx, ML - 4, ctx.y - 4, CW + 8, boxH, C.lgray);
+      for (const line of canonLines) {
+        need(ctx, 14);
+        drawWrapped(ctx, line, ML + 6, reg, 9.5, C.navy, CW - 12);
+      }
+      ctx.y += 10;
+    }
+
+    if (result.canonicalPublicDisplay) {
+      need(ctx, 20);
+      const lbl = "Best canonical public display format: ";
+      const lblW = bold.widthOfTextAtSize(lbl, 9.5);
+      dt(ctx.page, lbl, ML, ctx.y, bold, 9.5, C.black);
+      drawWrapped(ctx, result.canonicalPublicDisplay, ML + lblW, reg, 9.5, C.navy, CW - lblW);
+      ctx.y += 8;
+    }
+
+    if (result.positioningStatement) {
+      need(ctx, 30);
+      dt(ctx.page, "Positioning statement to use everywhere:", ML, ctx.y, bold, 10, C.black);
+      ctx.y += 14;
+      drawWrapped(ctx, result.positioningStatement, ML + 10, reg, 10, C.teal, CW - 10);
+      ctx.y += 8;
+    }
+
+    if (result.bestDifferenceLanguage) {
+      need(ctx, 24);
+      dt(ctx.page, `Best difference language for ${firstName(advisor.name)}:`, ML, ctx.y, bold, 10, C.black);
+      ctx.y += 14;
+      drawWrapped(ctx, result.bestDifferenceLanguage, ML + 10, reg, 10, C.black, CW - 10);
+      ctx.y += 10;
+    }
+  }
+
   // Audience analysis
   if (result.mainAudienceServed) {
     need(ctx, 30);
@@ -606,6 +648,72 @@ export async function generateAuditPdf(
     sectionHeader(ctx, "Service area expansion opportunity");
     bullet(ctx, qv.serviceAreaExpansion, C.black, 9.5);
     ctx.y += 8;
+  }
+
+  // ── SET UP NEW CHANNELS ────────────────────────────────────────────────────
+  if (result.newChannels) {
+    const nc = result.newChannels;
+    const hasAny = nc.required?.length || nc.recommended?.length || nc.optional?.length;
+    if (hasAny) {
+      sectionHeader(ctx, "Set Up New Channels");
+
+      const tiers: Array<{ label: string; items: string[]; color: Color }> = [
+        { label: "Required",    items: nc.required    ?? [], color: C.red    },
+        { label: "Recommended", items: nc.recommended ?? [], color: C.amber  },
+        { label: "Optional",    items: nc.optional    ?? [], color: C.teal   },
+      ];
+
+      for (const tier of tiers) {
+        if (!tier.items.length) continue;
+        need(ctx, 20);
+        dt(ctx.page, `${tier.label}:`, ML, ctx.y, bold, 10, tier.color);
+        ctx.y += 14;
+        for (const item of tier.items) {
+          bullet(ctx, item, C.black, 9.5);
+        }
+        ctx.y += 4;
+      }
+      ctx.y += 4;
+    }
+  }
+
+  // ── COMPETITIVE GAP ANALYSIS ───────────────────────────────────────────────
+  if (result.competitiveGapAnalysis) {
+    const cga = result.competitiveGapAnalysis;
+    if (cga.advantages?.length || cga.gaps?.length) {
+      sectionHeader(ctx, "Competitive Gap Analysis");
+
+      if (cga.advantages?.length) {
+        need(ctx, 20);
+        dt(ctx.page, "Your Advantages:", ML, ctx.y, bold, 10, C.green);
+        ctx.y += 14;
+        for (const a of cga.advantages) bullet(ctx, a, C.black, 9.5);
+        ctx.y += 6;
+      }
+
+      if (cga.gaps?.length) {
+        need(ctx, 20);
+        dt(ctx.page, "Gaps to Close:", ML, ctx.y, bold, 10, C.amber);
+        ctx.y += 14;
+        for (const g of cga.gaps) bullet(ctx, g, C.black, 9.5);
+        ctx.y += 6;
+      }
+    }
+  }
+
+  // ── CONTENT THEMES ─────────────────────────────────────────────────────────
+  if (result.contentThemes?.length) {
+    sectionHeader(ctx, `Best Recurring Content Themes for ${firstName(advisor.name)}`);
+
+    result.contentThemes.forEach((theme, i) => {
+      need(ctx, 18);
+      const numStr = `${i + 1}. `;
+      const numW = bold.widthOfTextAtSize(numStr, 10);
+      dt(ctx.page, numStr, ML, ctx.y, bold, 10, C.navy);
+      drawWrapped(ctx, theme, ML + numW, reg, 10, C.black, CW - numW);
+      ctx.y += 4;
+    });
+    ctx.y += 6;
   }
 
   // ── FOOTER on last page ────────────────────────────────────────────────────
