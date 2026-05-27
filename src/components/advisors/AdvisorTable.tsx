@@ -1121,7 +1121,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
           {/* Header */}
           <div className="grid items-center gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase"
             style={{
-              gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
+              gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
               borderBottom: "1px solid #1d4368", color: "#858889", background: "#0a2540", letterSpacing: "0.1em",
             }}>
             <button
@@ -1148,6 +1148,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
             <div className="text-center">Audit</div><div className="text-center">Matrix</div>
             <div className="text-center">Canva</div><div className="text-center">Social Tool</div>
             <div className="text-center">NAP Form</div>
+            <div className="text-center" style={{ color: "#5bcbf5" }}>Vis. Audit</div>
             <div>Channels</div><div />
           </div>
 
@@ -1162,7 +1163,7 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
                 onKeyDown={(e) => { if (e.key === "Enter") setOpenId(a.id); }}
                 className="grid w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.02]"
                 style={{
-                  gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
+                  gridTemplateColumns: "20px 1.4fr 1.2fr 0.8fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr 1.6fr 24px",
                   borderBottom: i === filtered.length - 1 ? "none" : "1px solid #1d4368",
                   background: isSelected ? "rgba(91,203,245,0.04)" : undefined,
                 }}
@@ -1249,6 +1250,31 @@ export function AdvisorTable({ advisors: initialAdvisors, leaders, openCompose, 
                     />
                   )}
                 </div>
+
+                {/* Visibility Audit completion indicator */}
+                {(() => {
+                  const hasAudit = a.visibilityAudits?.some((v) => v.status === "COMPLETE");
+                  const latest = a.visibilityAudits?.[0];
+                  return (
+                    <div className="flex justify-center">
+                      <div
+                        className="grid h-5 w-5 place-items-center rounded"
+                        title={hasAudit ? `Visibility audit complete — Score: ${latest?.score ?? "?"}/100` : "No visibility audit yet"}
+                        style={{
+                          background: hasAudit ? "#5bcbf522" : "#0a2540",
+                          border: `1px solid ${hasAudit ? "#5bcbf544" : "#1d4368"}`,
+                          color: hasAudit ? "#5bcbf5" : "#5d6566",
+                        }}
+                      >
+                        {hasAudit && (
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="flex flex-wrap items-center gap-1">
                   {CHANNEL_DEFS.map((def) => {

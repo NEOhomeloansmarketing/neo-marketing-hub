@@ -541,24 +541,6 @@ export async function generateAuditPdf(
     ctx.y += 6;
   }
 
-  // ── MISSING / UNCONFIRMED FOOTPRINT ───────────────────────────────────────
-  if (result.missingFootprintNote || result.dataAggregatorNote) {
-    sectionHeader(ctx, "Missing or unconfirmed high-authority footprint");
-
-    if (result.missingFootprintNote) {
-      dt(ctx.page, "Not detected in this audit (Unverified absence):", ML, ctx.y, bold, 10, C.black);
-      ctx.y += 15;
-      drawWrapped(ctx, result.missingFootprintNote, ML, reg, 10, C.black, CW);
-      ctx.y += 8;
-    }
-    if (result.dataAggregatorNote) {
-      dt(ctx.page, "Data aggregator presence:", ML, ctx.y, bold, 10, C.black);
-      ctx.y += 15;
-      drawWrapped(ctx, result.dataAggregatorNote, ML, reg, 10, C.black, CW);
-      ctx.y += 8;
-    }
-  }
-
   // ── VISIBILITY SCORE ───────────────────────────────────────────────────────
   sectionHeader(ctx, "Visibility Score");
 
@@ -648,33 +630,6 @@ export async function generateAuditPdf(
     sectionHeader(ctx, "Service area expansion opportunity");
     bullet(ctx, qv.serviceAreaExpansion, C.black, 9.5);
     ctx.y += 8;
-  }
-
-  // ── SET UP NEW CHANNELS ────────────────────────────────────────────────────
-  if (result.newChannels) {
-    const nc = result.newChannels;
-    const hasAny = nc.required?.length || nc.recommended?.length || nc.optional?.length;
-    if (hasAny) {
-      sectionHeader(ctx, "Set Up New Channels");
-
-      const tiers: Array<{ label: string; items: string[]; color: Color }> = [
-        { label: "Required",    items: nc.required    ?? [], color: C.red    },
-        { label: "Recommended", items: nc.recommended ?? [], color: C.amber  },
-        { label: "Optional",    items: nc.optional    ?? [], color: C.teal   },
-      ];
-
-      for (const tier of tiers) {
-        if (!tier.items.length) continue;
-        need(ctx, 20);
-        dt(ctx.page, `${tier.label}:`, ML, ctx.y, bold, 10, tier.color);
-        ctx.y += 14;
-        for (const item of tier.items) {
-          bullet(ctx, item, C.black, 9.5);
-        }
-        ctx.y += 4;
-      }
-      ctx.y += 4;
-    }
   }
 
   // ── COMPETITIVE GAP ANALYSIS ───────────────────────────────────────────────

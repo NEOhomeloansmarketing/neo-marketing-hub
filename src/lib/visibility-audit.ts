@@ -56,13 +56,6 @@ export interface AuditResult {
   // Grouped conflicts: "Main conflict N: [Type] — explanation"
   conflicts: string[];
 
-  // New channels to set up
-  newChannels?: {
-    required: string[];
-    recommended: string[];
-    optional: string[];
-  };
-
   // Competitive gap analysis
   competitiveGapAnalysis?: {
     advantages: string[];
@@ -81,10 +74,6 @@ export interface AuditResult {
     status: "OK" | "ISSUE" | "REMOVE" | "MISSING";
     notes?: string;
   }>;
-
-  // Missing footprint notes
-  missingFootprintNote?: string;
-  dataAggregatorNote?: string;
 
   // Content themes specific to this advisor
   contentThemes?: string[];
@@ -153,13 +142,6 @@ export async function runVisibilityAudit(advisor: AdvisorData): Promise<AuditRes
         .join("\n")
     : "No social profiles on record yet.";
 
-  const presentPlatforms = advisor.channels.map((c) => c.platform.toUpperCase());
-  const majorPlatforms = [
-    "WEBSITE", "GOOGLE_BUSINESS", "FACEBOOK", "INSTAGRAM",
-    "LINKEDIN", "ZILLOW", "YOUTUBE", "YELP", "BBB", "EXPERIENCE",
-  ];
-  const missingPlatforms = majorPlatforms.filter((p) => !presentPlatforms.includes(p));
-
   const fallbackAddress = [
     advisor.streetAddress, advisor.city, advisor.state, advisor.zip,
   ].filter(Boolean).join(", ");
@@ -194,49 +176,53 @@ ${
     : `No NAP form uploaded. Use this profile data as the canonical NAP:\n${fallbackNap}`
 }
 
-KNOWN ONLINE PROFILES ON RECORD:
+KNOWN ONLINE PROFILES ON RECORD (these are the ONLY platforms to audit):
 ${knownProfiles}
 
-PLATFORMS NOT YET FOUND IN THEIR PROFILE:
-${missingPlatforms.length ? missingPlatforms.join(", ") : "All major platforms accounted for."}
-
 YOUR TASK:
-Perform a comprehensive, advisor-specific visibility audit. Every finding must reference actual data — specific platform names, specific URLs, specific wrong values vs. correct canonical values.
+Audit each of the known profiles listed above against the canonical NAP. You are NOT recommending new platforms — only review what already exists. Your job is to identify what needs to be UPDATED or FIXED on the platforms they already have, so every channel matches the canonical NAP exactly.
 
-WHAT TO AUDIT:
-1. NAP inconsistencies — wrong phone, old address, wrong suite, name mismatch, "NEO" not fully capitalized
-2. Old employer branding — any prior company name (Cornerstone, Academy, loanDepot, etc.) still live anywhere
-3. Duplicate or conflicting profiles — multiple LinkedIn/Instagram/YouTube accounts for the same person
-4. Incomplete profiles — missing bio, photos, hours, categories (do NOT flag NMLS — it is tracked separately)
-5. Missing high-authority platforms — GBP, BBB, Bing Places, Apple Maps, Experience.com, Yelp, Zillow
-6. Review platform gaps and reputation signals
-7. Website local SEO — service area pages, local keywords, schema markup
+IMPORTANT SCOPE RULES:
+- Only create action items for platforms listed in KNOWN ONLINE PROFILES.
+- Do NOT suggest creating new accounts (no BBB, Experience.com, Bing Places, Apple Maps, or any platform not already listed).
+- Do NOT tell them to set up platforms they don't have. If a platform isn't in the known list, ignore it entirely.
+- Base all findings on the canonical NAP vs. what you know about the listed profile URLs.
+
+WHAT TO CHECK ON EACH KNOWN PROFILE:
+1. NAP accuracy — does the name, address, phone, email, and title on that profile match the canonical NAP exactly?
+2. Old employer branding — is any prior company name (Cornerstone, Academy, loanDepot, etc.) still showing?
+3. Name format — is "NEO" fully capitalized everywhere it appears? Is the advisor's name spelled exactly as canonical?
+4. Title/category — does the job title or business category match canonical?
+5. Duplicate profiles — are there multiple accounts for the same platform? (Flag the one to remove)
+6. Incomplete profile data — missing bio, photos, or hours on a profile they already have (do NOT flag NMLS — it is tracked separately)
+7. Website — local keywords, service area language, schema markup, mobile-friendliness
 8. AI search readiness — canonical entity signals, structured data, FAQ content
 
-SCORING (conservative — only award points with real evidence):
-- Listings Health /30: NAP accuracy across directories, GBP/Zillow/BBB/Experience presence
-- Reviews & Reputation /20: review volume, recency, platform diversity, sentiment
-- Website Local Relevance /20: local keywords, service area pages, schema, mobile-friendly
-- Brand & Entity Consistency /15: identical name/title/photo/employer everywhere, no legacy branding
-- AI Search Readiness /15: canonical entity signals, FAQ content, structured data
+SCORING (conservative — only award points with real evidence from the known profiles):
+- Listings Health /30: NAP accuracy across their known directory/listing profiles
+- Reviews & Reputation /20: review volume, recency, platform diversity, sentiment signals from known profiles
+- Website Local Relevance /20: local keywords, service area pages, schema, mobile-friendliness on their website
+- Brand & Entity Consistency /15: identical name/title/photo/employer on all known platforms, no legacy branding
+- AI Search Readiness /15: canonical entity signals, structured data, FAQ content
 
 ACTION ITEMS — FORMAT RULES (critical):
 - Numbered 1 through N, most urgent first
-- SHORT — one bold key term, then 1-2 tight sentences. No paragraphs.
-- Reference real platform names and real wrong values found
-- If a URL is included, put it in the "url" field — rendered as a CLICK HERE button. Do NOT paste the URL into the action text.
-- Format: "Bold Key Term: One or two specific sentences telling them exactly what to fix."
-- Example good action item: "Remove Old YouTube Channel: Your Cornerstone-era channel is still live and publicly indexed. Delete it to eliminate old employer branding."
-- Example bad action item (too long/vague): "You should consider removing the old YouTube channel that may still reference previous employer branding because it could confuse visitors..."
+- SHORT — one bold key term, then 1-2 tight sentences max. No paragraphs.
+- Only reference platforms from the known list above
+- Include the profile URL in the "url" field — it will render as a CLICK HERE button. Do NOT paste the URL inside the action text.
+- Format: "Bold Key Term: One or two specific sentences telling them exactly what to fix and what the correct value should be."
+- Example good: "Update Facebook Title: Your Facebook page still shows 'Loan Officer at Cornerstone.' Change it to 'Mortgage Advisor at NEO Home Loans.'"
+- Example bad: "You should consider updating your social profiles to reflect your current employer..." (too vague, no specifics)
 
 CONFLICTS — FORMAT RULES:
-- Group conflicts by type: "Main conflict 1: Title inconsistency", "Main conflict 2: Location inconsistency", etc.
-- Each conflict is one specific factual statement — what the platform shows vs. what the canonical value is.
-- Example: "Main conflict 1: Title inconsistency - Facebook shows 'Loan Officer' but canonical title is 'Mortgage Advisor at NEO Home Loans'"
+- Only list conflicts found on the known profiles
+- Group by type: "Main conflict 1: Title inconsistency — [Platform] shows '[wrong value]' but canonical title is '[correct value]'"
+- Each is one specific factual statement. No guessing — only flag what you can determine from the profile URLs and NAP data provided.
 
 CANONICAL BLOCK — FORMAT RULES:
-- Write the exact NAP text the advisor should copy-paste everywhere (GBP, Zillow, directories, website footer, etc.)
+- Write the exact NAP text the advisor should copy-paste into every profile bio/about section
 - Multi-line, formatted for display. Include: Name, Title, Company, NMLS, Address, Phone, Website.
+- Use \\n between each line.
 - Example format:
   [Name]
   [Title] | NEO Home Loans
@@ -245,18 +231,13 @@ CANONICAL BLOCK — FORMAT RULES:
   [Phone]
   [Website]
 
-NEW CHANNELS — classify platforms not yet set up:
-- Required: High-authority platforms every advisor must have (GBP, BBB, Experience.com, etc.)
-- Recommended: Platforms that will materially help this advisor's specific market
-- Optional: Nice-to-have based on their niche or audience
-
 COMPETITIVE GAP ANALYSIS:
-- Advantages: things this advisor already does well vs. typical competitors in their market
-- Gaps: specific areas where competitors are beating them right now
+- Advantages: things this advisor does better than typical competitors based on the profiles and data available
+- Gaps: specific areas (on their existing platforms) where they fall short vs. competitor norms
 
 CONTENT THEMES:
-- List 5-8 specific recurring content topics tailored to THIS advisor's actual market, audience, and background
-- These are topics they should post about consistently — not generic mortgage content
+- List 5-8 specific recurring content topics tailored to THIS advisor's market, audience, and background
+- These should be actionable content ideas they can post on their existing channels
 
 Return ONLY raw JSON — no markdown, no code fences, no explanation:
 
@@ -296,14 +277,9 @@ Return ONLY raw JSON — no markdown, no code fences, no explanation:
     }
   ],
   "conflicts": [
-    "<Main conflict 1: Type - specific platform shows wrong value, canonical value is X>",
+    "<Main conflict 1: Type - [Platform] shows '[wrong value]' but canonical [field] is '[correct value]'>",
     "<Main conflict 2: Type - ...>"
   ],
-  "newChannels": {
-    "required": ["<Platform: Why it's required for this advisor>"],
-    "recommended": ["<Platform: Why it fits this advisor's market>"],
-    "optional": ["<Platform: Nice-to-have for their niche>"]
-  },
   "competitiveGapAnalysis": {
     "advantages": ["<Specific thing this advisor does well vs competitors in their market>"],
     "gaps": ["<Specific area where competitors are currently beating them>"]
@@ -323,8 +299,6 @@ Return ONLY raw JSON — no markdown, no code fences, no explanation:
       "notes": "<Specific issue or empty if OK. For REMOVE: explain why. For ISSUE: what is wrong and what correct value should be.>"
     }
   ],
-  "missingFootprintNote": "<Which specific high-authority platforms were not found and why they matter.>",
-  "dataAggregatorNote": "<Assessment of data aggregator risk based on any address/phone inconsistencies found. Note this is an inference, not a verified finding.>",
   "contentThemes": [
     "<Specific recurring content topic tailored to this advisor's market and audience>",
     "<Topic 2>",
