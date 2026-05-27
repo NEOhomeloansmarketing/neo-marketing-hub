@@ -225,11 +225,20 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
     if (!item) return;
     const newStatus = item.status === "DONE" ? "OPEN" : "DONE";
     setActionItems((items) => items.map((a) => (a.id === id ? { ...a, status: newStatus } : a)));
+    // Update the action item itself
     await fetch(`/api/actions/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
     });
+    // If this action item has a linked task, keep it in sync
+    if (item.taskId) {
+      await fetch(`/api/tasks/${item.taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus === "DONE" ? "DONE" : "TODO" }),
+      });
+    }
   };
 
   const convertToTask = async (id: string) => {
@@ -659,47 +668,22 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-              {actionItems.length === 0 && !addingAction && (
-                <p className="py-4 text-center text-[11.5px]" style={{ color: "#5d6566" }}>None yet</p>
+              {actionItems.filter((a) => a.status !== "DONE").length === 0 && !addingAction && (
+                <p className="py-4 text-center text-[11.5px]" style={{ color: "#5d6566" }}>
+                  {actionItems.length === 0 ? "None yet" : "All done!"}
+                </p>
               )}
-              {actionItems.map((a) => {
-                const done = a.status === "DONE";
-                return (
-                  <div
-                    key={a.id}
-                    className="group flex items-start gap-2 rounded-md p-2 transition hover:bg-white/[0.02]"
-                    style={{ background: "#0a2540", border: "1px solid #1d4368" }}
-                  >
-                    <button
-                      onClick={() => toggleAction(a.id)}
-                      className="mt-0.5 grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full transition"
-                      style={{ background: done ? "#22c55e" : "transparent", border: `1.5px solid ${done ? "#22c55e" : "#5d6566"}` }}
-                    >
-                      {done && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <div className={"truncate text-[11.5px] " + (done ? "line-through" : "")} style={{ color: done ? "#5d6566" : "#e2e8f0" }}>
-                        {a.title}
-                      </div>
-                      {a.assignee && (
-                        <div className="mt-0.5 flex items-center gap-1 text-[10px]" style={{ color: "#858889" }}>
-                          <Avatar name={a.assignee.name} color={a.assignee.color} initials={a.assignee.initials} size={12} />
-                          {a.assignee.name}
-                        </div>
-                      )}
-                    </div>
-                    {!a.taskId && (
-                      <button
-                        onClick={() => convertToTask(a.id)}
-                        className="shrink-0 rounded px-1 py-0.5 text-[9px] font-medium opacity-0 transition group-hover:opacity-100"
-                        style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
-                      >
-                        → Task
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+              {/* Open items */}
+              {actionItems.filter((a) => a.status !== "DONE").map((a) => (
+                <ActionRow key={a.id} a={a} onToggle={toggleAction} onConvert={convertToTask} />
+              ))}
+              {/* Completed items — collapsed by default */}
+              {actionItems.filter((a) => a.status === "DONE").length > 0 && (
+                <CompletedActions
+                  items={actionItems.filter((a) => a.status === "DONE")}
+                  onToggle={toggleAction}
+                />
+              )}
 
               {addingAction && (
                 <form onSubmit={handleAddAction} className="space-y-2 rounded-md p-2" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
@@ -828,5 +812,82 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
       />
     )}
     </>
+  );
+}
+
+// ── Action item row ─────────────────────────────────────────────────────────
+function ActionRow({
+  a,
+  onToggle,
+  onConvert,
+}: {
+  a: ActionItem;
+  onToggle: (id: string) => void;
+  onConvert: (id: string) => void;
+}) {
+  const done = a.status === "DONE";
+  return (
+    <div
+      className="group flex items-start gap-2 rounded-md p-2 transition hover:bg-white/[0.02]"
+      style={{ background: "#0a2540", border: "1px solid #1d4368" }}
+    >
+      <button
+        onClick={() => onToggle(a.id)}
+        className="mt-0.5 grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full transition"
+        style={{ background: done ? "#22c55e" : "transparent", border: `1.5px solid ${done ? "#22c55e" : "#5d6566"}` }}
+      >
+        {done && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className={"truncate text-[11.5px] " + (done ? "line-through" : "")} style={{ color: done ? "#5d6566" : "#e2e8f0" }}>
+          {a.title}
+        </div>
+        {a.assignee && (
+          <div className="mt-0.5 flex items-center gap-1 text-[10px]" style={{ color: "#858889" }}>
+            <Avatar name={a.assignee.name} color={a.assignee.color} initials={a.assignee.initials} size={12} />
+            {a.assignee.name}
+          </div>
+        )}
+      </div>
+      {!a.taskId && !done && (
+        <button
+          onClick={() => onConvert(a.id)}
+          className="shrink-0 rounded px-1 py-0.5 text-[9px] font-medium opacity-0 transition group-hover:opacity-100"
+          style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
+        >
+          → Task
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Completed actions — collapsible ────────────────────────────────────────
+function CompletedActions({ items, onToggle }: { items: ActionItem[]; onToggle: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-1">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-1.5 py-1 text-[10.5px] font-semibold transition hover:opacity-80"
+        style={{ color: "#858889" }}
+      >
+        <svg
+          width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+          strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+        {items.length} completed
+      </button>
+      {open && (
+        <div className="mt-1 space-y-1.5">
+          {items.map((a) => (
+            <ActionRow key={a.id} a={a} onToggle={onToggle} onConvert={() => {}} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
