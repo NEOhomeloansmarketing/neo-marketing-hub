@@ -36,10 +36,14 @@ export async function GET(
     return NextResponse.json({ error: "Advisor not found" }, { status: 404 });
   }
 
-  // New audits store the complete result in rawResult.
-  // Older audits fall back to the individual columns.
-  const raw = audit.rawResult as AuditResult | null;
+  const raw = audit.rawResult as (AuditResult & { externalPdfUrl?: string }) | null;
 
+  // Imported audits (uploaded PDFs) store only the external URL — redirect directly to it.
+  if (raw?.externalPdfUrl) {
+    return NextResponse.redirect(raw.externalPdfUrl);
+  }
+
+  // Generated audits store the full AuditResult; older audits fall back to individual columns.
   const result: AuditResult = raw ?? {
     extractedNap:    (audit.extractedNap   ?? {}) as AuditResult["extractedNap"],
     score:           audit.score ?? 0,
