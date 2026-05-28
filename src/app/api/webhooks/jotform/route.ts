@@ -129,30 +129,39 @@ export async function POST(request: Request) {
     const advisorEmail = findField(fields, "email");
     const advisorNmls = findField(fields, "nmls", "license");
     const rawType = findField(fields, "whattype", "type", "project", "service", "category");
-    const titleFromForm = findField(fields, "title", "whatis", "subject", "headline", "name of");
+    const howCan = findField(fields, "howcan", "howcanwe", "how can");
+    const pleaseDescribe = findField(fields, "pleasedescribe", "please describe", "describe");
     const dueDateRaw = findField(fields, "due", "deadline", "requested");
 
-    // Collect all non-skipped text fields as "Label: value" lines
+    // Title: "How can we help" value + advisor name
+    const title = howCan
+      ? `${howCan}${advisorName ? ` — ${advisorName}` : ""}`
+      : (rawType ? `${rawType} request` : "Marketing request") + (advisorName ? ` — ${advisorName}` : "");
+
+    // Build description: pin howcan + pleasedescribe at top, then remaining fields
     const descriptionLines: string[] = [];
+
+    if (howCan) descriptionLines.push(`How Can We Help: ${howCan}`);
+    if (pleaseDescribe) descriptionLines.push(`Please Describe: ${pleaseDescribe}`);
+    if (descriptionLines.length > 0) descriptionLines.push(""); // blank spacer
+
+    // Add all remaining fields that weren't already extracted
+    const PINNED_KEYS = ["howcan", "howcanwe", "how can", "pleasedescribe", "please describe", "describe"];
     for (const [key, val] of Object.entries(fields)) {
       if (isSkippedKey(key)) continue;
+      // Skip fields already pinned at top
+      if (PINNED_KEYS.some((p) => key.toLowerCase().includes(p))) continue;
       const text = fieldToString(val);
       if (!text) continue;
-      // Clean up camelCase / underscore keys into a readable label
       const label = key
-        .replace(/^q\d+_/i, "")           // strip JotForm "q4_" prefix
-        .replace(/([a-z])([A-Z])/g, "$1 $2") // camelCase → spaced
+        .replace(/^q\d+_/i, "")
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
         .replace(/_/g, " ")
         .replace(/\b\w/g, (c) => c.toUpperCase())
         .trim();
       descriptionLines.push(`${label}: ${text}`);
     }
     const description = descriptionLines.length > 0 ? descriptionLines.join("\n") : null;
-
-    const title =
-      titleFromForm ??
-      (rawType ? `${rawType} request` : "Marketing request") +
-      (advisorName ? ` — ${advisorName}` : "");
 
     const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
 
