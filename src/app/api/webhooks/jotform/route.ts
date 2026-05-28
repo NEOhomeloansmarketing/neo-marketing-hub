@@ -17,6 +17,35 @@ export async function GET() {
 }
 
 
+// Keys to skip when building the description (already extracted into named fields)
+const DESCRIPTION_SKIP_KEYS = [
+  "name", "fullname", "loanofficer", "advisor", "email", "nmls",
+  "license", "whattype", "type", "project", "service", "category", "title",
+  "whatis", "subject", "headline", "due", "deadline", "requested", "submit",
+  "ip", "date", "form", "id", "submission",
+];
+
+function isSkippedKey(key: string): boolean {
+  const kl = key.toLowerCase();
+  return DESCRIPTION_SKIP_KEYS.some((s) => kl.includes(s));
+}
+
+function fieldToString(v: unknown): string | null {
+  if (typeof v === "string") return v.trim() || null;
+  if (typeof v === "object" && v !== null) {
+    const obj = v as Record<string, string>;
+    if ("first" in obj || "last" in obj)
+      return [obj.first, obj.last].filter(Boolean).join(" ").trim() || null;
+    if ("year" in obj && "month" in obj && "day" in obj) {
+      const { year, month, day } = obj;
+      return year && month && day
+        ? `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+        : null;
+    }
+  }
+  return null;
+}
+
 // Search all fields in the rawRequest JSON for a value matching any of the keywords
 function findField(fields: Record<string, unknown>, ...keywords: string[]): string | null {
   for (const keyword of keywords) {
@@ -102,37 +131,6 @@ export async function POST(request: Request) {
     const rawType = findField(fields, "whattype", "type", "project", "service", "category");
     const titleFromForm = findField(fields, "title", "whatis", "subject", "headline", "name of");
     const dueDateRaw = findField(fields, "due", "deadline", "requested");
-
-    // Build a rich description from ALL text fields not already captured above.
-    // This ensures renamed or new form fields (e.g. "Please describe your request")
-    // always appear in the description regardless of how the form is updated.
-    const SKIP_KEYS = ["name", "fullname", "loanofficer", "advisor", "email", "nmls",
-      "license", "whattype", "type", "project", "service", "category", "title",
-      "whatis", "subject", "headline", "due", "deadline", "requested", "submit",
-      "ip", "date", "form", "id", "submission"];
-
-    function isSkippedKey(key: string): boolean {
-      const kl = key.toLowerCase();
-      return SKIP_KEYS.some((s) => kl.includes(s));
-    }
-
-    function fieldToString(v: unknown): string | null {
-      if (typeof v === "string") return v.trim() || null;
-      if (typeof v === "object" && v !== null) {
-        const obj = v as Record<string, string>;
-        if ("first" in obj || "last" in obj) {
-          return [obj.first, obj.last].filter(Boolean).join(" ").trim() || null;
-        }
-        if ("year" in obj && "month" in obj && "day" in obj) {
-          const { year, month, day } = obj;
-          return year && month && day
-            ? `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
-            : null;
-        }
-        return null;
-      }
-      return null;
-    }
 
     // Collect all non-skipped text fields as "Label: value" lines
     const descriptionLines: string[] = [];
