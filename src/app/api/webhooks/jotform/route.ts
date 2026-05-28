@@ -100,9 +100,56 @@ export async function POST(request: Request) {
     const advisorEmail = findField(fields, "email");
     const advisorNmls = findField(fields, "nmls", "license");
     const rawType = findField(fields, "whattype", "type", "project", "service", "category");
-    const description = findField(fields, "description", "canyou", "details", "notes", "message", "instructions");
     const titleFromForm = findField(fields, "title", "whatis", "subject", "headline", "name of");
     const dueDateRaw = findField(fields, "due", "deadline", "requested");
+
+    // Build a rich description from ALL text fields not already captured above.
+    // This ensures renamed or new form fields (e.g. "Please describe your request")
+    // always appear in the description regardless of how the form is updated.
+    const SKIP_KEYS = ["name", "fullname", "loanofficer", "advisor", "email", "nmls",
+      "license", "whattype", "type", "project", "service", "category", "title",
+      "whatis", "subject", "headline", "due", "deadline", "requested", "submit",
+      "ip", "date", "form", "id", "submission"];
+
+    function isSkippedKey(key: string): boolean {
+      const kl = key.toLowerCase();
+      return SKIP_KEYS.some((s) => kl.includes(s));
+    }
+
+    function fieldToString(v: unknown): string | null {
+      if (typeof v === "string") return v.trim() || null;
+      if (typeof v === "object" && v !== null) {
+        const obj = v as Record<string, string>;
+        if ("first" in obj || "last" in obj) {
+          return [obj.first, obj.last].filter(Boolean).join(" ").trim() || null;
+        }
+        if ("year" in obj && "month" in obj && "day" in obj) {
+          const { year, month, day } = obj;
+          return year && month && day
+            ? `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+            : null;
+        }
+        return null;
+      }
+      return null;
+    }
+
+    // Collect all non-skipped text fields as "Label: value" lines
+    const descriptionLines: string[] = [];
+    for (const [key, val] of Object.entries(fields)) {
+      if (isSkippedKey(key)) continue;
+      const text = fieldToString(val);
+      if (!text) continue;
+      // Clean up camelCase / underscore keys into a readable label
+      const label = key
+        .replace(/^q\d+_/i, "")           // strip JotForm "q4_" prefix
+        .replace(/([a-z])([A-Z])/g, "$1 $2") // camelCase → spaced
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim();
+      descriptionLines.push(`${label}: ${text}`);
+    }
+    const description = descriptionLines.length > 0 ? descriptionLines.join("\n") : null;
 
     const title =
       titleFromForm ??
