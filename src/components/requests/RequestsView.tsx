@@ -356,24 +356,81 @@ function RequestDetailPanel({
           )}
 
           {/* Raw form data from JotForm */}
-          {req.formData && Object.keys(req.formData).length > 0 && (
-            <div>
-              <SL>JotForm submission data</SL>
-              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid #1d4368" }}>
-                {Object.entries(req.formData)
-                  .filter(([k]) => !["submissionID", "formID", "formTitle", "pretty", "rawRequest"].includes(k))
-                  .map(([k, v], i, arr) => (
-                    <div key={k} className="flex gap-3 px-3 py-2 text-[11.5px]"
-                      style={{ borderBottom: i < arr.length - 1 ? "1px solid #1d4368" : "none", background: i % 2 === 0 ? "#0a2540" : "#0e2b48" }}>
-                      <span className="w-40 shrink-0 font-medium" style={{ color: "#858889" }}>
-                        {k.replace(/^q\d+_/, "").replace(/_/g, " ")}
-                      </span>
-                      <span className="flex-1 break-words" style={{ color: "#cbd5e1" }}>{String(v)}</span>
+          {req.formData && Object.keys(req.formData).length > 0 && (() => {
+            const JOTFORM_SKIP = new Set([
+              "submissionID","formID","formTitle","pretty","rawRequest",
+              "ip","slug","q_","webhookURL","environment","thankYou",
+            ]);
+
+            function toLabel(key: string): string {
+              return key
+                .replace(/^q\d+_/i, "")                        // strip q4_ prefix
+                .replace(/([a-z])([A-Z])/g, "$1 $2")           // camelCase → words
+                .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")     // ABCDef → ABC Def
+                .replace(/_/g, " ")
+                .trim()
+                .replace(/\b\w/g, (c) => c.toUpperCase());     // Title Case
+            }
+
+            function toValue(v: unknown): string | null {
+              if (v === null || v === undefined) return null;
+              if (typeof v === "string") return v.trim() || null;
+              if (typeof v === "object" && !Array.isArray(v)) {
+                const obj = v as Record<string, string>;
+                // Name field
+                if ("first" in obj || "last" in obj) {
+                  const full = [obj.first, obj.last].filter(Boolean).join(" ").trim();
+                  return full || null;
+                }
+                // Date field
+                if ("year" in obj && "month" in obj && "day" in obj) {
+                  const { year, month, day } = obj;
+                  if (year && month && day) {
+                    const d = new Date(`${year}-${month.padStart(2,"0")}-${day.padStart(2,"0")}`);
+                    return isNaN(d.getTime()) ? null : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+                  }
+                  return null;
+                }
+                // Phone field
+                if ("area" in obj || "phone" in obj) {
+                  const num = [(obj.area ?? ""), (obj.phone ?? "")].filter(Boolean).join("-");
+                  return num || null;
+                }
+                // Generic object — skip
+                return null;
+              }
+              if (Array.isArray(v)) {
+                const items = (v as unknown[]).map(toValue).filter(Boolean);
+                return items.length ? items.join(", ") : null;
+              }
+              return String(v).trim() || null;
+            }
+
+            const rows = Object.entries(req.formData)
+              .filter(([k]) => {
+                const kl = k.toLowerCase();
+                return !Array.from(JOTFORM_SKIP).some((s) => kl.includes(s.toLowerCase()));
+              })
+              .map(([k, v]) => ({ label: toLabel(k), value: toValue(v) }))
+              .filter((r) => r.value && r.label);
+
+            if (!rows.length) return null;
+
+            return (
+              <div>
+                <SL>Submission data</SL>
+                <div className="rounded-lg overflow-hidden" style={{ border: "1px solid #1d4368" }}>
+                  {rows.map((r, i) => (
+                    <div key={i} className="flex gap-3 px-3 py-2.5 text-[11.5px]"
+                      style={{ borderBottom: i < rows.length - 1 ? "1px solid #1d4368" : "none", background: i % 2 === 0 ? "#0a2540" : "#0e2b48" }}>
+                      <span className="w-44 shrink-0 font-semibold" style={{ color: "#858889" }}>{r.label}</span>
+                      <span className="flex-1 break-words whitespace-pre-wrap" style={{ color: "#cbd5e1" }}>{r.value}</span>
                     </div>
                   ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Comments */}
           <div className="rounded-xl p-4" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
