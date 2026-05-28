@@ -531,6 +531,7 @@ export function RequestsView({ requests: initialRequests, teamMembers }: Request
   const [composing, setComposing] = useState(false);
   const [filterType, setFilterType] = useState("ALL");
   const [showArchived, setShowArchived] = useState(false);
+  const [deliveredCollapsed, setDeliveredCollapsed] = useState(true);
   const searchParams = useSearchParams();
 
   // Auto-open request drawer when ?open=<requestId> is in the URL
@@ -620,17 +621,71 @@ export function RequestsView({ requests: initialRequests, teamMembers }: Request
       <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 500 }}>
         {COLUMNS.map((col) => {
           const colRequests = byStatus(col.id);
+          const isDelivered = col.id === "DELIVERED";
+          const isCollapsed = isDelivered && deliveredCollapsed;
+
+          if (isCollapsed) {
+            // Slim collapsed strip for Delivered
+            return (
+              <button
+                key={col.id}
+                onClick={() => setDeliveredCollapsed(false)}
+                className="flex shrink-0 flex-col items-center rounded-xl transition hover:brightness-110"
+                style={{ background: "#0a2540", border: "1px solid #1d4368", width: 44, minHeight: 120 }}
+                title="Show Delivered requests"
+              >
+                <div className="flex w-full items-center justify-center rounded-t-xl py-2.5" style={{ background: "#0e2b48", borderBottom: "1px solid #1d4368" }}>
+                  <span className="h-2 w-2 rounded-full" style={{ background: col.color }} />
+                </div>
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 py-3">
+                  <span
+                    className="text-[10px] font-bold tabular-nums"
+                    style={{ color: col.color }}
+                  >
+                    {colRequests.length}
+                  </span>
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-widest"
+                    style={{
+                      color: "#858889",
+                      writingMode: "vertical-rl",
+                      textOrientation: "mixed",
+                      transform: "rotate(180deg)",
+                    }}
+                  >
+                    Delivered
+                  </span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </div>
+              </button>
+            );
+          }
+
           return (
             <div key={col.id} className="flex w-72 shrink-0 flex-col rounded-xl overflow-hidden" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
               {/* Column header */}
-              <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ borderBottom: "1px solid #1d4368", background: "#0e2b48" }}>
+              <div
+                className={`flex items-center justify-between px-4 py-3 shrink-0${isDelivered ? " cursor-pointer hover:brightness-110 transition" : ""}`}
+                style={{ borderBottom: "1px solid #1d4368", background: "#0e2b48" }}
+                onClick={isDelivered ? () => setDeliveredCollapsed(true) : undefined}
+                title={isDelivered ? "Collapse Delivered" : undefined}
+              >
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full" style={{ background: col.color }} />
                   <span className="text-[12.5px] font-semibold text-slate-100">{col.label}</span>
                 </div>
-                <span className="rounded-full px-2 py-[2px] text-[10px] font-semibold tabular-nums" style={{ background: col.accent, color: col.color }}>
-                  {colRequests.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full px-2 py-[2px] text-[10px] font-semibold tabular-nums" style={{ background: col.accent, color: col.color }}>
+                    {colRequests.length}
+                  </span>
+                  {isDelivered && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#858889" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  )}
+                </div>
               </div>
 
               {/* Cards */}
