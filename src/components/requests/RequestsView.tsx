@@ -660,20 +660,6 @@ export function RequestsView({ requests: initialRequests, teamMembers }: Request
         </div>
       </div>
 
-      {/* JotForm webhook tip */}
-      <div className="flex items-start gap-3 rounded-lg p-3.5" style={{ background: "rgba(91,203,245,0.06)", border: "1px solid rgba(91,203,245,0.2)" }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
-          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <div className="text-[12px]" style={{ color: "#cbd5e1" }}>
-          <span className="font-semibold text-slate-100">JotForm webhook URL:</span>{" "}
-          <code className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: "#0a2540", color: "#5bcbf5", border: "1px solid #1d4368" }}>
-            {typeof window !== "undefined" ? window.location.origin : "https://your-app.vercel.app"}/api/webhooks/jotform
-          </code>
-          {" "}— paste this into your JotForm → Settings → Integrations → Webhooks.
-        </div>
-      </div>
-
       {/* Kanban board */}
       <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 500 }}>
         {COLUMNS.map((col) => {
