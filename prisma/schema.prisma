@@ -260,6 +260,7 @@ model User {
   ideaVotes            IdeaVote[]
   marketingAssignments MarketingRequest[]
   rocksOwned           Rock[]            @relation("RockOwner")
+  headlinesOwned       Headline[]        @relation("HeadlineOwner")
   comments             Comment[]         @relation("CommentAuthor")
   notifications        Notification[]    @relation("NotifReceiver")
   notifsSent           Notification[]    @relation("NotifActor")
@@ -375,6 +376,7 @@ model Task {
   attachments TaskAttachment[]
   actionItems ActionItem[]
   rockLinks   RockTask[]
+  headline    Headline?
   thread      Comment[]  @relation("TaskThread")
 }
 
@@ -681,6 +683,22 @@ model RockTask {
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@id([rockId, taskId])
+}
+
+// ── Headlines (EOS-style team news items) ────────────────────────────────────
+
+model Headline {
+  id          String    @id @default(cuid())
+  title       String
+  type        String    @default("WIN")  // WIN | ISSUE | INFO
+  ownerId     String?
+  taskId      String?   @unique          // optional linked task
+  resolved    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  owner User? @relation("HeadlineOwner", fields: [ownerId], references: [id])
+  task  Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
 }
 
 // ── Comments (unified across all entity types) ────────────────────────────────
