@@ -37,10 +37,15 @@ export function HeadlinesView({ users }: { users: Owner[] }) {
   const [filterType, setFilterType] = useState<string>("ALL");
 
   useEffect(() => {
-    fetch("/api/headlines")
-      .then(r => r.json())
-      .then(d => { setHeadlines(Array.isArray(d) ? d : []); setLoading(false); })
-      .catch(() => setLoading(false));
+    // Run setup first (creates Headline table if missing), then load
+    fetch("/api/setup")
+      .catch(() => {})
+      .finally(() => {
+        fetch("/api/headlines")
+          .then(r => r.json())
+          .then(d => { setHeadlines(Array.isArray(d) ? d : []); setLoading(false); })
+          .catch(() => setLoading(false));
+      });
   }, []);
 
   async function addHeadline() {
