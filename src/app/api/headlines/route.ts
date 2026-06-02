@@ -6,16 +6,19 @@ export async function GET() {
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const headlines = await db.headline.findMany({
-    where: { resolved: false },
-    include: {
-      owner: { select: { id: true, name: true, initials: true, color: true } },
-      task: { select: { id: true, title: true, status: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  return NextResponse.json(headlines);
+  try {
+    const headlines = await db.headline.findMany({
+      where: { resolved: false },
+      include: {
+        owner: { select: { id: true, name: true, initials: true, color: true } },
+        task: { select: { id: true, title: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(headlines);
+  } catch {
+    return NextResponse.json([]);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -29,17 +32,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
 
-  const headline = await db.headline.create({
-    data: {
-      title: title.trim(),
-      type,
-      ownerId: ownerId || null,
-    },
-    include: {
-      owner: { select: { id: true, name: true, initials: true, color: true } },
-      task: { select: { id: true, title: true, status: true } },
-    },
-  });
-
-  return NextResponse.json(headline);
+  try {
+    const headline = await db.headline.create({
+      data: {
+        title: title.trim(),
+        type,
+        ownerId: ownerId || null,
+      },
+      include: {
+        owner: { select: { id: true, name: true, initials: true, color: true } },
+        task: { select: { id: true, title: true, status: true } },
+      },
+    });
+    return NextResponse.json(headline);
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

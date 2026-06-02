@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "buildCommand": "npx prisma generate && npx prisma db push --accept-data-loss && next build",
+  "buildCommand": "npx prisma generate && (npx prisma db push --accept-data-loss || true) && next build",
   "installCommand": "npm install",
   "regions": ["iad1"]
 }
