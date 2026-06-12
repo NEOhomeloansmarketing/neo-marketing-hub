@@ -1,5 +1,143 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
+// ─── AI Weekly Summary card ────────────────────────────────────────────────
+export interface WeeklySummaryData {
+  id: string;
+  prose: string;
+  highlights: string[];
+  generatedAt: string;
+}
+
+function AISummaryCard({ initialSummary }: { initialSummary: WeeklySummaryData | null }) {
+  const [summary, setSummary] = useState<WeeklySummaryData | null>(initialSummary);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // Auto-generate on Fridays if no summary exists yet
+  useEffect(() => {
+    const isFriday = new Date().getDay() === 5;
+    if (isFriday && !initialSummary) generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function generate() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/analytics/weekly-summary", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Generation failed"); return; }
+      setSummary(data);
+    } catch {
+      setError("Network error — please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isFriday = new Date().getDay() === 5;
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ background: "linear-gradient(135deg, #071828 0%, #0a2540 100%)", border: "1px solid rgba(91,203,245,0.2)" }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-5 py-3.5"
+        style={{ borderBottom: "1px solid rgba(91,203,245,0.15)", background: "rgba(91,203,245,0.06)" }}
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="text-[16px]">✨</span>
+          <div>
+            <div className="text-[13px] font-bold text-slate-100">AI Weekly Summary</div>
+            <div className="text-[10.5px]" style={{ color: "#5d6566" }}>
+              {summary
+                ? `Generated ${new Date(summary.generatedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                : isFriday ? "Generating your Friday wrap-up…" : "No summary yet for this week"}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={generate}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+          style={{ background: "rgba(91,203,245,0.12)", color: "#5bcbf5", border: "1px solid rgba(91,203,245,0.25)" }}
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+              Generating…
+            </>
+          ) : (
+            <>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+              {summary ? "Regenerate" : "Generate"}
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="px-5 py-4">
+        {error && (
+          <div className="mb-3 rounded-lg px-3 py-2 text-[12px]" style={{ background: "rgba(239,68,68,0.08)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)" }}>
+            {error}
+          </div>
+        )}
+
+        {loading && !summary && (
+          <div className="flex items-center gap-3 py-4">
+            <svg className="animate-spin shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+            <span className="text-[12.5px]" style={{ color: "#858889" }}>Claude is writing your team's weekly wrap-up…</span>
+          </div>
+        )}
+
+        {!summary && !loading && (
+          <div className="py-4 text-center">
+            <p className="text-[12.5px] mb-3" style={{ color: "#858889" }}>
+              {isFriday
+                ? "It's Friday — generate this week's AI summary to celebrate your team's work!"
+                : "Click Generate to create an AI-written summary of this week's accomplishments."}
+            </p>
+            <button
+              onClick={generate}
+              className="rounded-lg px-4 py-2 text-[12.5px] font-semibold transition hover:brightness-110"
+              style={{ background: "rgba(91,203,245,0.12)", color: "#5bcbf5", border: "1px solid rgba(91,203,245,0.25)" }}
+            >
+              ✨ Generate summary
+            </button>
+          </div>
+        )}
+
+        {summary && (
+          <div className="grid grid-cols-3 gap-5">
+            {/* Prose — 2/3 */}
+            <div className="col-span-2 space-y-3">
+              {summary.prose.split("\n\n").map((para, i) => (
+                <p key={i} className="text-[13px] leading-relaxed" style={{ color: "#cbd5e1" }}>{para}</p>
+              ))}
+            </div>
+            {/* Highlights — 1/3 */}
+            <div>
+              <div className="text-[10.5px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: "#5bcbf5" }}>Highlights</div>
+              <ul className="space-y-2">
+                {summary.highlights.map((h, i) => (
+                  <li key={i} className="flex items-start gap-2 text-[12.5px] leading-snug" style={{ color: "#e2e8f0" }}>
+                    {h}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export interface TasksAnalyticsStats {
   weekLabel: string; // e.g. "Jun 9 – Jun 15, 2026"
   completedThisWeek: number;
@@ -105,13 +243,16 @@ function WeeklyChart({ trend }: { trend: TasksAnalyticsStats["weeklyTrend"] }) {
   );
 }
 
-export function TasksAnalytics({ stats }: { stats: TasksAnalyticsStats }) {
+export function TasksAnalytics({ stats, initialSummary }: { stats: TasksAnalyticsStats; initialSummary: WeeklySummaryData | null }) {
   const { weekLabel, completedThisWeek, completedLastWeek, totalOpen, overdue, highPriorityOpen, byPerson, weeklyTrend, priorityBreakdown, dueSoon } = stats;
   const delta = completedThisWeek - completedLastWeek;
   const activeMembers = byPerson.filter((p) => p.completedThisWeek > 0 || p.open > 0);
 
   return (
     <div className="space-y-6">
+
+      {/* AI Summary */}
+      <AISummaryCard initialSummary={initialSummary} />
 
       {/* Week header */}
       <div className="flex items-center justify-between">

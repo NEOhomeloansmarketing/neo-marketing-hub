@@ -2,7 +2,7 @@ import { TopBar } from "@/components/topbar/TopBar";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { AnalyticsTabs } from "@/components/analytics/AnalyticsTabs";
-import type { TasksAnalyticsStats } from "@/components/analytics/TasksAnalytics";
+import type { TasksAnalyticsStats, WeeklySummaryData } from "@/components/analytics/TasksAnalytics";
 
 export default async function AnalyticsPage() {
   await requireAuth();
@@ -318,11 +318,29 @@ export default async function AnalyticsPage() {
     });
   } catch { /* DB not ready */ }
 
+  // ── Weekly AI Summary (cached) ────────────────────────────────────────────
+  let initialSummary: WeeklySummaryData | null = null;
+  try {
+    const teamId = await getActiveTeamId();
+    const cached = await db.weeklySummary.findFirst({
+      where: { weekStart: thisWeekStart, ...(teamId ? { teamId } : {}) },
+      orderBy: { generatedAt: "desc" },
+    });
+    if (cached) {
+      initialSummary = {
+        id: cached.id,
+        prose: cached.prose,
+        highlights: cached.highlights,
+        generatedAt: cached.generatedAt.toISOString(),
+      };
+    }
+  } catch { /* table not ready yet */ }
+
   return (
     <>
       <TopBar title="Analytics" subtitle="Reporting across requests, compliance, and team activity" />
       <div className="mt-6">
-        <AnalyticsTabs requestStats={requestStats} complianceStats={complianceStats} taskStats={taskStats} />
+        <AnalyticsTabs requestStats={requestStats} complianceStats={complianceStats} taskStats={taskStats} initialSummary={initialSummary} />
       </div>
     </>
   );

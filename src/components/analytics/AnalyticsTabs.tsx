@@ -6,7 +6,7 @@ import { ComplianceAnalytics } from "./ComplianceAnalytics";
 import { SearchConsoleAnalytics } from "./SearchConsoleAnalytics";
 import { DudaAnalytics } from "./DudaAnalytics";
 import { TasksAnalytics } from "./TasksAnalytics";
-import type { TasksAnalyticsStats } from "./TasksAnalytics";
+import type { TasksAnalyticsStats, WeeklySummaryData } from "./TasksAnalytics";
 
 type RequestStats = React.ComponentProps<typeof RequestsAnalytics>["stats"];
 type ComplianceStats = React.ComponentProps<typeof ComplianceAnalytics>["stats"];
@@ -23,10 +23,12 @@ export function AnalyticsTabs({
   requestStats,
   complianceStats,
   taskStats,
+  initialSummary,
 }: {
   requestStats: RequestStats;
   complianceStats: ComplianceStats;
   taskStats: TasksAnalyticsStats;
+  initialSummary: WeeklySummaryData | null;
 }) {
   const [activeTab, setActiveTab] = useState("tasks");
 
@@ -50,7 +52,7 @@ export function AnalyticsTabs({
         ))}
       </div>
 
-      {activeTab === "tasks" && <TasksAnalytics stats={taskStats} />}
+      {activeTab === "tasks" && <TasksAnalytics stats={taskStats} initialSummary={initialSummary} />}
       {activeTab === "requests" && <RequestsAnalytics stats={requestStats} />}
       {activeTab === "compliance" && <ComplianceAnalytics stats={complianceStats} />}
       {activeTab === "search" && <SearchConsoleAnalytics />}

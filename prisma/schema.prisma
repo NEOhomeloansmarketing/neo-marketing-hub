@@ -745,3 +745,14 @@ model Notification {
   actor   User?    @relation("NotifActor", fields: [actorId], references: [id])
   comment Comment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
 }
+
+// ── Weekly AI Summary ─────────────────────────────────────────────────────────
+
+model WeeklySummary {
+  id           String   @id @default(cuid())
+  weekStart    DateTime // Monday 00:00:00 UTC of the summarised week
+  prose        String   // 2–4 paragraph AI narrative
+  highlights   String[] // Bullet-point wins / highlights
+  generatedAt  DateTime @default(now())
+  teamId       String?
+}
