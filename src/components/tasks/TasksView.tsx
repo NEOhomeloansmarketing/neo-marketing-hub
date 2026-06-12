@@ -25,6 +25,7 @@ interface Task {
   projectId?: string | null;
   dueBucket?: string | null;
   dueDate?: string | null;
+  updatedAt?: string | null;
   status: string;
   priority: string;
   scope: string;
@@ -46,7 +47,6 @@ const DUE_BUCKETS = [
   { id: "this-week", label: "This week", tone: "#a8aaab" },
   { id: "next-week", label: "Next week", tone: "#a8aaab" },
   { id: "later", label: "Later", tone: "#858889" },
-  { id: "done", label: "Recently completed", tone: "#22c55e" },
 ];
 
 const PRIORITY_TONE: Record<string, { color: string; bg: string; border: string; label: string }> = {
@@ -68,7 +68,45 @@ function PriorityChip({ priority, small }: { priority: string; small?: boolean }
   );
 }
 
-type TabType = "mine" | "team" | "all";
+type TabType = "mine" | "team" | "all" | "completed";
+
+// ─── Week grouping helpers ──────────────────────────────────────────────────
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day; // Monday-first
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatWeekLabel(weekStart: Date, now: Date): string {
+  const thisWeekStart = getWeekStart(now);
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+
+  if (weekStart.getTime() === thisWeekStart.getTime()) return "This week";
+  if (weekStart.getTime() === lastWeekStart.getTime()) return "Last week";
+  return `Week of ${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+function groupByWeek(tasks: Task[]): { label: string; weekStart: Date; tasks: Task[] }[] {
+  const now = new Date();
+  const map = new Map<string, { label: string; weekStart: Date; tasks: Task[] }>();
+
+  for (const t of tasks) {
+    const date = t.updatedAt ? new Date(t.updatedAt) : new Date();
+    const ws = getWeekStart(date);
+    const key = ws.toISOString();
+    if (!map.has(key)) {
+      map.set(key, { label: formatWeekLabel(ws, now), weekStart: ws, tasks: [] });
+    }
+    map.get(key)!.tasks.push(t);
+  }
+
+  // Sort newest week first
+  return Array.from(map.values()).sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime());
+}
 
 // ─── Rich task compose panel ───────────────────────────────────────────────
 function NewTaskPanel({
@@ -461,6 +499,8 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
 
   const visible = useMemo(() => {
     return tasks.filter((t) => {
+      if (tab === "completed") return false; // completed tab has its own view
+      if (t.status === "DONE") return false; // hide completed from active tabs
       if (tab === "mine" && t.ownerId !== currentUserId) return false;
       if (tab === "team" && t.scope !== "TEAM") return false;
       if (query && !t.title.toLowerCase().includes(query.toLowerCase())) return false;
@@ -482,28 +522,40 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   const teamOpen = tasks.filter((t) => t.scope === "TEAM" && t.status !== "DONE").length;
   const allOpen = tasks.filter((t) => t.status !== "DONE").length;
   const myOverdue = tasks.filter((t) => t.ownerId === currentUserId && t.status !== "DONE" && t.dueBucket === "yesterday").length;
+  const completedTotal = tasks.filter((t) => t.status === "DONE").length;
 
-  const TabButton = ({ t, label, count }: { t: TabType; label: string; count: number }) => (
-    <button
-      onClick={() => setTab(t)}
-      className="relative inline-flex items-center gap-2 px-3 py-2 text-[12.5px] font-semibold transition"
-      style={{ color: tab === t ? "#e2e8f0" : "#858889" }}
-    >
-      <span>{label}</span>
-      <span
-        className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums"
-        style={{
-          background: tab === t ? "rgba(91,203,245,0.18)" : "#14375a",
-          color: tab === t ? "#5bcbf5" : "#a8aaab",
-        }}
+  // Completed tab: tasks grouped by week (sorted newest first)
+  const completedGroups = useMemo(() => {
+    const done = tasks
+      .filter((t) => t.status === "DONE")
+      .sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime());
+    return groupByWeek(done);
+  }, [tasks]);
+
+  const TabButton = ({ t, label, count, accent }: { t: TabType; label: string; count: number; accent?: string }) => {
+    const accentColor = accent ?? "#5bcbf5";
+    return (
+      <button
+        onClick={() => setTab(t)}
+        className="relative inline-flex items-center gap-2 px-3 py-2 text-[12.5px] font-semibold transition"
+        style={{ color: tab === t ? "#e2e8f0" : "#858889" }}
       >
-        {count}
-      </span>
-      {tab === t && (
-        <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full" style={{ background: "#5bcbf5" }} />
-      )}
-    </button>
-  );
+        <span>{label}</span>
+        <span
+          className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums"
+          style={{
+            background: tab === t ? `${accentColor}28` : "#14375a",
+            color: tab === t ? accentColor : "#a8aaab",
+          }}
+        >
+          {count}
+        </span>
+        {tab === t && (
+          <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full" style={{ background: accentColor }} />
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -527,6 +579,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
           <TabButton t="mine" label="My Tasks" count={myOpen} />
           <TabButton t="team" label="Team Tasks" count={teamOpen} />
           <TabButton t="all" label="All Tasks" count={allOpen} />
+          <TabButton t="completed" label="Completed" count={completedTotal} accent="#22c55e" />
         </div>
         <div className="flex items-center gap-2 pb-2">
           <div
@@ -546,18 +599,30 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
               style={{ color: "#e2e8f0" }}
             />
           </div>
-          <button
-            onClick={() => setComposing(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white"
-            style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", boxShadow: "0 4px 14px rgba(91,203,245,0.25)" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-            New task
-          </button>
+          {tab !== "completed" && (
+            <button
+              onClick={() => setComposing(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white"
+              style={{ background: "linear-gradient(180deg, #5bcbf5, #3aa6cc)", boxShadow: "0 4px 14px rgba(91,203,245,0.25)" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+              New task
+            </button>
+          )}
         </div>
       </div>
 
       {/* Info banner */}
+      {tab === "completed" && (
+        <div
+          className="flex items-start gap-3 rounded-lg p-3.5"
+          style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
+        >
+          <div className="text-[12px] leading-relaxed" style={{ color: "#cbd5e1" }}>
+            <span className="font-semibold text-slate-100">Completed Tasks</span> — all finished tasks grouped by the week they were marked done. Click any task to view details or reopen it.
+          </div>
+        </div>
+      )}
       {tab === "mine" && (
         <div
           className="flex items-start gap-3 rounded-lg p-3.5"
@@ -570,34 +635,56 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
         </div>
       )}
 
-      {/* Sectioned list */}
-      <div className="space-y-3">
-        {grouped.every((g) => g.tasks.length === 0) ? (
-          <EmptyState
-            title="No tasks yet"
-            description={'Click "New task" to create your first task.'}
-          />
-        ) : (
-          grouped.map(({ bucket, tasks: bucketTasks }) => {
-            if (bucketTasks.length === 0) return null;
-            return (
-              <BucketSection
-                key={bucket.id}
-                bucket={bucket}
-                tasks={bucketTasks}
+      {/* Completed tab view */}
+      {tab === "completed" && (
+        <div className="space-y-3">
+          {completedGroups.length === 0 ? (
+            <EmptyState title="No completed tasks yet" description="Tasks you mark as done will appear here, grouped by week." />
+          ) : (
+            completedGroups.map(({ label, weekStart, tasks: weekTasks }) => (
+              <CompletedWeekSection
+                key={weekStart.toISOString()}
+                label={label}
+                tasks={weekTasks}
                 onToggle={toggle}
                 onOpen={setOpenTask}
-                defaultOpen={bucket.id !== "done"}
-                selected={selected}
-                onToggleSelect={toggleSelect}
+                defaultOpen={label === "This week"}
               />
-            );
-          })
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      )}
 
-      {/* Bulk action bar */}
-      {selected.size > 0 && (
+      {/* Active tasks sectioned list */}
+      {tab !== "completed" && (
+        <div className="space-y-3">
+          {grouped.every((g) => g.tasks.length === 0) ? (
+            <EmptyState
+              title="No tasks yet"
+              description={'Click "New task" to create your first task.'}
+            />
+          ) : (
+            grouped.map(({ bucket, tasks: bucketTasks }) => {
+              if (bucketTasks.length === 0) return null;
+              return (
+                <BucketSection
+                  key={bucket.id}
+                  bucket={bucket}
+                  tasks={bucketTasks}
+                  onToggle={toggle}
+                  onOpen={setOpenTask}
+                  defaultOpen={bucket.id !== "done"}
+                  selected={selected}
+                  onToggleSelect={toggleSelect}
+                />
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* Bulk action bar (hidden on completed tab) */}
+      {tab !== "completed" && selected.size > 0 && (
         <div
           className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
           style={{ background: "#0e2b48", border: "1px solid #1d4368", minWidth: 300 }}
@@ -653,6 +740,99 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   );
 }
 
+// ─── Completed week section ────────────────────────────────────────────────
+function CompletedWeekSection({
+  label,
+  tasks,
+  onToggle,
+  onOpen,
+  defaultOpen,
+}: {
+  label: string;
+  tasks: Task[];
+  onToggle: (id: string) => void;
+  onOpen: (t: Task) => void;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const isThisWeek = label === "This week";
+
+  return (
+    <section className="rounded-lg overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition hover:bg-white/[0.02]"
+      >
+        <span className="h-2 w-2 rounded-full" style={{ background: isThisWeek ? "#22c55e" : "#5d6566" }} />
+        <span className="text-[12.5px] font-semibold tracking-tight text-slate-100">{label}</span>
+        <span className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums" style={{ background: "#14375a", color: "#a8aaab" }}>
+          {tasks.length}
+        </span>
+        <span className="ml-auto" style={{ color: "#858889", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
+      </button>
+      {open && (
+        <div>
+          <div
+            className="grid items-center gap-3 px-4 py-2 text-[10.5px] font-semibold uppercase"
+            style={{
+              gridTemplateColumns: "20px 1fr 80px 100px 96px",
+              borderBottom: "1px solid #1d4368",
+              borderTop: "1px solid #1d4368",
+              color: "#858889",
+              background: "#0a2540",
+              letterSpacing: "0.12em",
+            }}
+          >
+            <div /><div>Task</div><div>Priority</div><div>Completed</div><div>Assignee</div>
+          </div>
+          {tasks.map((t) => (
+            <div
+              key={t.id}
+              className="grid items-center gap-3 px-4 py-2.5 transition hover:bg-white/[0.02] cursor-pointer"
+              style={{ gridTemplateColumns: "20px 1fr 80px 100px 96px", borderBottom: "1px solid #1d4368" }}
+              onClick={() => onOpen(t)}
+            >
+              {/* Re-open toggle */}
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggle(t.id); }}
+                className="grid h-5 w-5 place-items-center rounded-full transition hover:opacity-70"
+                title="Reopen task"
+                style={{ background: "#22c55e22", border: "1.5px solid #22c55e" }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </button>
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-medium line-through" style={{ color: "#858889" }}>
+                  {t.title}
+                </div>
+              </div>
+              <PriorityChip priority={t.priority} small />
+              <div className="text-[11px]" style={{ color: "#a8aaab" }}>
+                {t.updatedAt
+                  ? new Date(t.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : "—"}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Avatar name={t.ownerName} color={t.ownerColor} initials={t.ownerInitials} size={22} />
+                <span className="truncate text-[11px] font-medium" style={{ color: "#cbd5e1" }}>
+                  {t.ownerName.split(" ")[0]}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Active bucket section ──────────────────────────────────────────────────
 function BucketSection({
   bucket,
   tasks,

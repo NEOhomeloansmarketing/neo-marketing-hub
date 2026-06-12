@@ -36,6 +36,7 @@ export default async function TasksPage() {
       projectId: t.projectId,
       dueBucket: t.dueBucket ?? "later",
       dueDate: t.dueDate?.toISOString() ?? null,
+      updatedAt: t.updatedAt.toISOString(),
       status: t.status,
       priority: t.priority,
       scope: t.scope,
