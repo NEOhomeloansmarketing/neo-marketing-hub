@@ -14,16 +14,6 @@ interface Person {
   role?: string;
 }
 
-interface ActionItem {
-  id: string;
-  title: string;
-  assignee?: Person | null;
-  dueDate?: string | null;
-  status: string;
-  source: string;
-  taskId?: string | null;
-}
-
 interface Section {
   id: string;
   heading: string;
@@ -46,7 +36,6 @@ interface MeetingDetailProps {
     status: string;
     sections: Section[];
     decisions: Decision[];
-    actionItems: ActionItem[];
     attendees: (Person & { absent?: boolean })[];
     summary?: string;
   };
@@ -97,7 +86,6 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
     [...meeting.sections].sort((a, b) => a.position - b.position)
   );
   const [decisions, setDecisions] = useState<Decision[]>(meeting.decisions);
-  const [actionItems, setActionItems] = useState(meeting.actionItems);
 
   // Active section index for focused mode
   const [activeIdx, setActiveIdx] = useState(0);
@@ -212,86 +200,6 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
     );
   };
 
-  // Action items
-  const [addingAction, setAddingAction] = useState(false);
-  const [newActionTitle, setNewActionTitle] = useState("");
-  const [newActionAssigneeId, setNewActionAssigneeId] = useState("");
-  const [newActionDueDate, setNewActionDueDate] = useState("");
-  const [newActionCreateTask, setNewActionCreateTask] = useState(false);
-  const [addActionLoading, setAddActionLoading] = useState(false);
-
-  const toggleAction = async (id: string) => {
-    const item = actionItems.find((a) => a.id === id);
-    if (!item) return;
-    const newStatus = item.status === "DONE" ? "OPEN" : "DONE";
-    setActionItems((items) => items.map((a) => (a.id === id ? { ...a, status: newStatus } : a)));
-    // Update the action item itself
-    await fetch(`/api/actions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    // If this action item has a linked task, keep it in sync
-    if (item.taskId) {
-      await fetch(`/api/tasks/${item.taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus === "DONE" ? "DONE" : "TODO" }),
-      });
-    }
-  };
-
-  const convertToTask = async (id: string) => {
-    const res = await fetch(`/api/actions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ convertToTask: true }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setActionItems((items) => items.map((a) => (a.id === id ? { ...a, taskId: updated.taskId } : a)));
-    }
-  };
-
-  const handleAddAction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newActionTitle.trim()) return;
-    setAddActionLoading(true);
-    const res = await fetch("/api/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: newActionTitle.trim(),
-        meetingId: meeting.id,
-        assigneeId: newActionAssigneeId || undefined,
-        dueDate: newActionDueDate || undefined,
-        createTask: newActionCreateTask,
-      }),
-    });
-    if (res.ok) {
-      const created = await res.json();
-      const assignee = meeting.attendees.find((a) => a.id === newActionAssigneeId) ?? null;
-      setActionItems((prev) => [
-        ...prev,
-        {
-          id: created.id,
-          title: created.title,
-          assignee: assignee ? { id: assignee.id, name: assignee.name, color: assignee.color, initials: assignee.initials } : null,
-          dueDate: created.dueDate ?? null,
-          status: created.status,
-          source: created.source,
-          taskId: created.taskId ?? null,
-        },
-      ]);
-      setNewActionTitle("");
-      setNewActionAssigneeId("");
-      setNewActionDueDate("");
-      setNewActionCreateTask(false);
-      setAddingAction(false);
-    }
-    setAddActionLoading(false);
-  };
-
   // Decisions
   const [newDecision, setNewDecision] = useState("");
   const [addingDecision, setAddingDecision] = useState(false);
@@ -319,18 +227,6 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
 
   // Transcribe modal
   const [showTranscribe, setShowTranscribe] = useState(false);
-
-  // Extract AI
-  const [extracting, setExtracting] = useState(false);
-  const handleExtractAI = async () => {
-    setExtracting(true);
-    const res = await fetch(`/api/meetings/${meeting.id}/extract-actions`, { method: "POST" });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.created?.length) setActionItems((prev) => [...prev, ...data.created]);
-    }
-    setExtracting(false);
-  };
 
   const attended = meeting.attendees.filter((a) => !a.absent);
 
@@ -646,84 +542,6 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
         {/* ── Right rail ──────────────────────────────────────────── */}
         <div className="flex w-64 shrink-0 flex-col gap-4" style={{ display: "flex" }}>
 
-          {/* Action items */}
-          <div
-            className="flex flex-col rounded-xl overflow-hidden"
-            style={{ background: "#0e2b48", border: "1px solid #1d4368", maxHeight: "55%" }}
-          >
-            <div
-              className="flex shrink-0 items-center justify-between px-4 py-3"
-              style={{ borderBottom: "1px solid #1d4368" }}
-            >
-              <div className="text-[10.5px] font-semibold uppercase tracking-widest" style={{ color: "#858889" }}>
-                Action items
-              </div>
-              <button
-                onClick={() => setAddingAction(true)}
-                className="text-[11px] font-semibold"
-                style={{ color: "#5bcbf5" }}
-              >
-                + Add
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-              {actionItems.filter((a) => a.status !== "DONE").length === 0 && !addingAction && (
-                <p className="py-4 text-center text-[11.5px]" style={{ color: "#5d6566" }}>
-                  {actionItems.length === 0 ? "None yet" : "All done!"}
-                </p>
-              )}
-              {/* Open items */}
-              {actionItems.filter((a) => a.status !== "DONE").map((a) => (
-                <ActionRow key={a.id} a={a} onToggle={toggleAction} onConvert={convertToTask} />
-              ))}
-              {/* Completed items — collapsed by default */}
-              {actionItems.filter((a) => a.status === "DONE").length > 0 && (
-                <CompletedActions
-                  items={actionItems.filter((a) => a.status === "DONE")}
-                  onToggle={toggleAction}
-                />
-              )}
-
-              {addingAction && (
-                <form onSubmit={handleAddAction} className="space-y-2 rounded-md p-2" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
-                  <input autoFocus placeholder="Action item…" value={newActionTitle} onChange={(e) => setNewActionTitle(e.target.value)} style={inputStyle} />
-                  <select value={newActionAssigneeId} onChange={(e) => setNewActionAssigneeId(e.target.value)} style={{ ...inputStyle, color: newActionAssigneeId ? "#e2e8f0" : "#858889" }}>
-                    <option value="">Assign to… (optional)</option>
-                    {meeting.attendees.filter((a) => !a.absent).map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                  <input type="date" value={newActionDueDate} onChange={(e) => setNewActionDueDate(e.target.value)} style={{ ...inputStyle, color: newActionDueDate ? "#e2e8f0" : "#858889" }} />
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={newActionCreateTask} onChange={(e) => setNewActionCreateTask(e.target.checked)} style={{ accentColor: "#5bcbf5" }} />
-                    <span className="text-[10.5px]" style={{ color: "#a8aaab" }}>Also create task</span>
-                  </label>
-                  <div className="flex gap-1.5">
-                    <button type="submit" disabled={addActionLoading || !newActionTitle.trim()} className="flex-1 rounded py-1 text-[11px] font-bold transition hover:brightness-110 disabled:opacity-50" style={{ background: "#5bcbf5", color: "#0a2540" }}>
-                      {addActionLoading ? "…" : "Add"}
-                    </button>
-                    <button type="button" onClick={() => setAddingAction(false)} className="rounded px-2 py-1 text-[11px] font-medium" style={{ background: "#14375a", color: "#a8aaab" }}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            <div className="shrink-0 p-3" style={{ borderTop: "1px solid #1d4368" }}>
-              <button
-                onClick={handleExtractAI}
-                disabled={extracting}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-semibold transition hover:brightness-110 disabled:opacity-60"
-                style={{ background: "rgba(91,203,245,0.08)", border: "1px dashed rgba(91,203,245,0.35)", color: "#5bcbf5" }}
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L9.5 8.5 3 9.27l5 4.87L6.18 21 12 17.77 17.82 21 16 14.14l5-4.87-6.5-.77L12 2z" /></svg>
-                {extracting ? "Extracting…" : "Extract with AI"}
-              </button>
-            </div>
-          </div>
-
           {/* Decisions */}
           <div
             className="flex flex-col rounded-xl overflow-hidden flex-1"
@@ -808,86 +626,9 @@ export function MeetingDetail({ meeting }: MeetingDetailProps) {
         meetingId={meeting.id}
         attendees={meeting.attendees.map((a) => ({ id: a.id, name: a.name, color: a.color, initials: a.initials }))}
         onClose={() => setShowTranscribe(false)}
-        onActionsCreated={(items) => setActionItems((prev) => [...prev, ...items])}
+        onActionsCreated={() => {}}
       />
     )}
     </>
-  );
-}
-
-// ── Action item row ─────────────────────────────────────────────────────────
-function ActionRow({
-  a,
-  onToggle,
-  onConvert,
-}: {
-  a: ActionItem;
-  onToggle: (id: string) => void;
-  onConvert: (id: string) => void;
-}) {
-  const done = a.status === "DONE";
-  return (
-    <div
-      className="group flex items-start gap-2 rounded-md p-2 transition hover:bg-white/[0.02]"
-      style={{ background: "#0a2540", border: "1px solid #1d4368" }}
-    >
-      <button
-        onClick={() => onToggle(a.id)}
-        className="mt-0.5 grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full transition"
-        style={{ background: done ? "#22c55e" : "transparent", border: `1.5px solid ${done ? "#22c55e" : "#5d6566"}` }}
-      >
-        {done && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className={"truncate text-[11.5px] " + (done ? "line-through" : "")} style={{ color: done ? "#5d6566" : "#e2e8f0" }}>
-          {a.title}
-        </div>
-        {a.assignee && (
-          <div className="mt-0.5 flex items-center gap-1 text-[10px]" style={{ color: "#858889" }}>
-            <Avatar name={a.assignee.name} color={a.assignee.color} initials={a.assignee.initials} size={12} />
-            {a.assignee.name}
-          </div>
-        )}
-      </div>
-      {!a.taskId && !done && (
-        <button
-          onClick={() => onConvert(a.id)}
-          className="shrink-0 rounded px-1 py-0.5 text-[9px] font-medium opacity-0 transition group-hover:opacity-100"
-          style={{ background: "#14375a", color: "#5bcbf5", border: "1px solid #1d4368" }}
-        >
-          → Task
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ── Completed actions — collapsible ────────────────────────────────────────
-function CompletedActions({ items, onToggle }: { items: ActionItem[]; onToggle: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mt-1">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 py-1 text-[10.5px] font-semibold transition hover:opacity-80"
-        style={{ color: "#858889" }}
-      >
-        <svg
-          width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-          strokeLinecap="round" strokeLinejoin="round"
-          style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-        {items.length} completed
-      </button>
-      {open && (
-        <div className="mt-1 space-y-1.5">
-          {items.map((a) => (
-            <ActionRow key={a.id} a={a} onToggle={onToggle} onConvert={() => {}} />
-          ))}
-        </div>
-      )}
-    </div>
   );
 }

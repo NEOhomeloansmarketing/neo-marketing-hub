@@ -21,10 +21,7 @@ export default async function MeetingDetailPage({
         },
         sections: { orderBy: { position: "asc" } },
         decisions: { orderBy: { createdAt: "asc" } },
-        actionItems: {
-          include: { assignee: true },
-          orderBy: { createdAt: "asc" },
-        },
+
       },
     });
   } catch {
@@ -50,22 +47,6 @@ export default async function MeetingDetailPage({
     decisions: meeting.decisions.map((d) => ({
       id: d.id,
       body: d.body,
-    })),
-    actionItems: meeting.actionItems.map((a) => ({
-      id: a.id,
-      title: a.title,
-      assignee: a.assignee
-        ? {
-            id: a.assignee.id,
-            name: a.assignee.name,
-            color: a.assignee.color,
-            initials: a.assignee.initials,
-          }
-        : null,
-      dueDate: a.dueDate?.toISOString() ?? null,
-      status: a.status,
-      source: a.source,
-      taskId: a.taskId ?? null,
     })),
     attendees: meeting.attendees.map((a) => ({
       id: a.user.id,
