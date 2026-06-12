@@ -31,9 +31,9 @@ interface ComplianceStats {
 }
 
 // Canva / Matrix / Social Tool = "signed up / not signed up"
-// Audit Form = "complete / not complete"
+// Vis. Audit = "complete / not complete"
 const CHECKLIST_ITEMS = [
-  { key: "auditForm" as const, label: "Audit Form", signedUpLabel: "Complete", notLabel: "Not Complete", color: "#5bcbf5" },
+  { key: "auditForm" as const, label: "Vis. Audit", signedUpLabel: "Complete", notLabel: "Not Complete", color: "#5bcbf5" },
   { key: "matrix" as const, label: "Matrix", signedUpLabel: "Signed Up", notLabel: "Not Signed Up", color: "#6366f1" },
   { key: "canva" as const, label: "Canva", signedUpLabel: "Signed Up", notLabel: "Not Signed Up", color: "#a855f7" },
   { key: "socialTool" as const, label: "Social Tool", signedUpLabel: "Signed Up", notLabel: "Not Signed Up", color: "#22c55e" },
@@ -148,7 +148,7 @@ export function ComplianceAnalytics({ stats }: { stats: ComplianceStats }) {
         <div className="flex h-40 items-end gap-3">
           {stats.weeklyIncrease.map((w, wi) => {
             const bars = [
-              { val: w.auditForm, color: "#5bcbf5", label: "Audit" },
+              { val: w.auditForm, color: "#5bcbf5", label: "Vis. Audit" },
               { val: w.matrix, color: "#6366f1", label: "Matrix" },
               { val: w.canva, color: "#a855f7", label: "Canva" },
               { val: w.socialTool, color: "#22c55e", label: "Social" },
@@ -299,7 +299,7 @@ export function ComplianceAnalytics({ stats }: { stats: ComplianceStats }) {
           <table className="w-full" style={{ minWidth: 640 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #1d4368", background: "#0a2540" }}>
-                {["Division Lead", "Advisors", "Audit Form", "Matrix", "Canva", "Social Tool", "Overall"].map((h) => (
+                {["Division Lead", "Advisors", "Vis. Audit", "Matrix", "Canva", "Social Tool", "Overall"].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#858889" }}>{h}</th>
                 ))}
               </tr>

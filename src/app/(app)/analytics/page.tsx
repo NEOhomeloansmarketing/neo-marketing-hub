@@ -218,15 +218,18 @@ export default async function AnalyticsPage() {
   try {
     // Advisor compliance
     const allAdvisors = await db.advisor.findMany({
-      include: { channels: true },
+      include: { channels: true, visibilityAudits: { where: { status: "COMPLETE" }, select: { id: true } } },
       orderBy: { createdAt: "asc" },
     });
+
+    // Helper: advisor has at least one completed visibility audit
+    const hasVisAudit = (a: typeof allAdvisors[0]) => a.visibilityAudits.length > 0;
 
     complianceStats.total = allAdvisors.length;
     complianceStats.active = allAdvisors.filter((a) => a.status === "ACTIVE").length;
     complianceStats.inactive = allAdvisors.filter((a) => a.status === "INACTIVE").length;
 
-    const af = allAdvisors.filter((a) => !!a.auditFormUrl).length;
+    const af = allAdvisors.filter(hasVisAudit).length;
     const mx = allAdvisors.filter((a) => !!a.matrixUrl).length;
     const cv = allAdvisors.filter((a) => !!a.canvaUrl).length;
     const st = allAdvisors.filter((a) => !!a.socialToolUrl).length;
@@ -272,12 +275,12 @@ export default async function AnalyticsPage() {
         return {
           leader,
           total: advisors.length,
-          auditForm: advisors.filter((a) => !!a.auditFormUrl).length,
+          auditForm: advisors.filter(hasVisAudit).length,
           matrix: advisors.filter((a) => !!a.matrixUrl).length,
           canva: advisors.filter((a) => !!a.canvaUrl).length,
           socialTool: advisors.filter((a) => !!a.socialToolUrl).length,
           weekIncrease: {
-            auditForm: inCurrent.filter((a) => !!a.auditFormUrl).length - inPrev.filter((a) => !!a.auditFormUrl).length,
+            auditForm: inCurrent.filter(hasVisAudit).length - inPrev.filter(hasVisAudit).length,
             matrix: inCurrent.filter((a) => !!a.matrixUrl).length - inPrev.filter((a) => !!a.matrixUrl).length,
             canva: inCurrent.filter((a) => !!a.canvaUrl).length - inPrev.filter((a) => !!a.canvaUrl).length,
             socialTool: inCurrent.filter((a) => !!a.socialToolUrl).length - inPrev.filter((a) => !!a.socialToolUrl).length,
@@ -310,7 +313,7 @@ export default async function AnalyticsPage() {
       const label = weekStart.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
       return {
         label,
-        auditForm: inWindow.filter((a) => !!a.auditFormUrl).length,
+        auditForm: inWindow.filter(hasVisAudit).length,
         matrix: inWindow.filter((a) => !!a.matrixUrl).length,
         canva: inWindow.filter((a) => !!a.canvaUrl).length,
         socialTool: inWindow.filter((a) => !!a.socialToolUrl).length,

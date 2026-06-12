@@ -667,12 +667,23 @@ ${advisor.napNotes ? `<div class="section"><div class="section-title">NAP Notes<
             );
           })}
 
-          {/* NAP Form — read-only, auto-checks when napFormUrl is set */}
+          {/* NAP Form — auto-checks when NAP fields are filled OR form is uploaded */}
           {(() => {
-            const checked = !!advisor.napFormUrl;
+            const hasNapFields = !!(advisor.phone && advisor.streetAddress && advisor.city && advisor.state);
+            const checked = hasNapFields || !!advisor.napFormUrl;
+            const subLabel = advisor.napFormUrl
+              ? <a href={advisor.napFormUrl!} target="_blank" rel="noopener" className="hover:underline" onClick={(e) => e.stopPropagation()}>View uploaded form</a>
+              : hasNapFields
+              ? "NAP info on file"
+              : "No NAP info yet";
+            const tooltipText = advisor.napFormUrl
+              ? "NAP form uploaded"
+              : hasNapFields
+              ? `NAP complete — ${advisor.phone} · ${advisor.streetAddress}, ${advisor.city} ${advisor.state}`
+              : "No phone or address on file";
             return (
               <div
-                title={checked ? `NAP form uploaded — click to view` : "No NAP form uploaded yet"}
+                title={tooltipText}
                 className="flex items-center gap-3 rounded-lg p-3"
                 style={{ background: "#0a2540", border: `1px solid ${checked ? "#5bcbf544" : "#1d4368"}` }}
               >
@@ -687,11 +698,7 @@ ${advisor.napNotes ? `<div class="section"><div class="section-title">NAP Notes<
                 <div className="min-w-0">
                   <div className="text-[12.5px] font-semibold text-slate-100">{NAP_CHECKLIST_LABEL}</div>
                   <div className="text-[10.5px]" style={{ color: checked ? "#5bcbf5" : "#858889" }}>
-                    {checked ? (
-                      <a href={advisor.napFormUrl!} target="_blank" rel="noopener" className="hover:underline" onClick={(e) => e.stopPropagation()}>
-                        View form
-                      </a>
-                    ) : "Not uploaded"}
+                    {subLabel}
                   </div>
                 </div>
               </div>
