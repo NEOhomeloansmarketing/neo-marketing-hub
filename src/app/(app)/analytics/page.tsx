@@ -54,9 +54,12 @@ export default async function AnalyticsPage() {
     const completedLastWeek = allTasks.filter(
       (t) => t.status === "DONE" && t.updatedAt >= lastWeekStart && t.updatedAt < thisWeekStart
     );
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const openTasks = allTasks.filter((t) => t.status !== "DONE");
-    const overdueTasks = openTasks.filter((t) => t.dueBucket === "yesterday");
-    const dueSoon = openTasks.filter((t) => t.dueDate && t.dueDate >= now && t.dueDate <= nextWeekEnd);
+    const overdueTasks = openTasks.filter((t) =>
+      t.dueDate ? t.dueDate < startOfToday : t.dueBucket === "yesterday"
+    );
+    const dueSoon = openTasks.filter((t) => t.dueDate && t.dueDate >= startOfToday && t.dueDate <= nextWeekEnd);
 
     taskStats.completedThisWeek = completedThisWeek.length;
     taskStats.completedLastWeek = completedLastWeek.length;

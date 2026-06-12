@@ -48,13 +48,38 @@ const DUE_BUCKETS = [
   { id: "later",     label: "Upcoming",   tone: "#858889" },
 ];
 
-// Tasks stored as "next-week" fall into the "Upcoming" bucket
-const BUCKET_MATCH: Record<string, (t: { dueBucket?: string | null }) => boolean> = {
-  "yesterday": (t) => t.dueBucket === "yesterday",
-  "today":     (t) => t.dueBucket === "today",
-  "tomorrow":  (t) => t.dueBucket === "tomorrow",
-  "this-week": (t) => t.dueBucket === "this-week",
-  "later":     (t) => t.dueBucket === "later" || t.dueBucket === "next-week" || !t.dueBucket,
+/**
+ * Derive which display bucket a task belongs to RIGHT NOW.
+ * If the task has a dueDate, we always trust the date over the stored bucket
+ * so tasks with a past dueDate always surface as Overdue regardless of what
+ * dueBucket was saved.
+ */
+function getEffectiveBucket(t: { dueDate?: string | null; dueBucket?: string | null }): string {
+  if (t.dueDate) {
+    const now = new Date();
+    const today    = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const dayAfter = new Date(today); dayAfter.setDate(today.getDate() + 2);
+    // End of this week = coming Sunday midnight
+    const endOfWeek = new Date(today); endOfWeek.setDate(today.getDate() + (7 - today.getDay()));
+    const due = new Date(t.dueDate);
+    if (due < today)     return "yesterday"; // past → Overdue
+    if (due < tomorrow)  return "today";
+    if (due < dayAfter)  return "tomorrow";
+    if (due <= endOfWeek) return "this-week";
+    return "later";
+  }
+  // No dueDate — fall back to stored bucket; normalise legacy "next-week" → "later"
+  if (!t.dueBucket || t.dueBucket === "next-week") return "later";
+  return t.dueBucket;
+}
+
+const BUCKET_MATCH: Record<string, (t: { dueDate?: string | null; dueBucket?: string | null }) => boolean> = {
+  "yesterday": (t) => getEffectiveBucket(t) === "yesterday",
+  "today":     (t) => getEffectiveBucket(t) === "today",
+  "tomorrow":  (t) => getEffectiveBucket(t) === "tomorrow",
+  "this-week": (t) => getEffectiveBucket(t) === "this-week",
+  "later":     (t) => getEffectiveBucket(t) === "later",
 };
 
 const PRIORITY_TONE: Record<string, { color: string; bg: string; border: string; label: string }> = {
@@ -518,7 +543,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   // Overdue tab: all overdue tasks grouped by assignee
   const overdueGroups = useMemo(() => {
     const overdue = tasks
-      .filter((t) => t.status !== "DONE" && t.dueBucket === "yesterday")
+      .filter((t) => t.status !== "DONE" && getEffectiveBucket(t) === "yesterday")
       .sort((a, b) => a.ownerName.localeCompare(b.ownerName));
     const map = new Map<string, { ownerId: string; ownerName: string; ownerColor?: string; ownerInitials?: string; tasks: Task[] }>();
     for (const t of overdue) {
@@ -540,8 +565,8 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   const myOpen = tasks.filter((t) => t.ownerId === currentUserId && t.status !== "DONE").length;
   const teamOpen = tasks.filter((t) => t.scope === "TEAM" && t.status !== "DONE").length;
   const allOpen = tasks.filter((t) => t.status !== "DONE").length;
-  const myOverdue = tasks.filter((t) => t.ownerId === currentUserId && t.status !== "DONE" && t.dueBucket === "yesterday").length;
-  const teamOverdue = tasks.filter((t) => t.status !== "DONE" && t.dueBucket === "yesterday").length;
+  const myOverdue = tasks.filter((t) => t.ownerId === currentUserId && t.status !== "DONE" && getEffectiveBucket(t) === "yesterday").length;
+  const teamOverdue = tasks.filter((t) => t.status !== "DONE" && getEffectiveBucket(t) === "yesterday").length;
   const completedTotal = tasks.filter((t) => t.status === "DONE").length;
 
   // Completed tab: tasks grouped by week (sorted newest first)
