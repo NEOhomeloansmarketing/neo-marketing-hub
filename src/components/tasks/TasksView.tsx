@@ -41,13 +41,21 @@ interface TasksViewProps {
 }
 
 const DUE_BUCKETS = [
-  { id: "yesterday", label: "Overdue", tone: "#ef4444" },
-  { id: "today", label: "Today", tone: "#f59e0b" },
-  { id: "tomorrow", label: "Tomorrow", tone: "#5bcbf5" },
-  { id: "this-week", label: "This week", tone: "#a8aaab" },
-  { id: "next-week", label: "Next week", tone: "#a8aaab" },
-  { id: "later", label: "Later", tone: "#858889" },
+  { id: "yesterday", label: "Overdue",    tone: "#ef4444" },
+  { id: "today",     label: "Today",      tone: "#f59e0b" },
+  { id: "tomorrow",  label: "Tomorrow",   tone: "#5bcbf5" },
+  { id: "this-week", label: "This week",  tone: "#a8aaab" },
+  { id: "later",     label: "Upcoming",   tone: "#858889" },
 ];
+
+// Tasks stored as "next-week" fall into the "Upcoming" bucket
+const BUCKET_MATCH: Record<string, (t: { dueBucket?: string | null }) => boolean> = {
+  "yesterday": (t) => t.dueBucket === "yesterday",
+  "today":     (t) => t.dueBucket === "today",
+  "tomorrow":  (t) => t.dueBucket === "tomorrow",
+  "this-week": (t) => t.dueBucket === "this-week",
+  "later":     (t) => t.dueBucket === "later" || t.dueBucket === "next-week" || !t.dueBucket,
+};
 
 const PRIORITY_TONE: Record<string, { color: string; bg: string; border: string; label: string }> = {
   HIGH: { color: "#fca5a5", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.35)", label: "High" },
@@ -326,8 +334,7 @@ function NewTaskPanel({
                 <option value="today">Today</option>
                 <option value="tomorrow">Tomorrow</option>
                 <option value="this-week">This week</option>
-                <option value="next-week">Next week</option>
-                <option value="later">Later</option>
+                <option value="later">Upcoming</option>
               </select>
             </div>
 
@@ -526,10 +533,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   const grouped = useMemo(() => {
     return DUE_BUCKETS.map((b) => ({
       bucket: b,
-      tasks: visible.filter((t) => {
-        if (b.id === "done") return t.status === "DONE";
-        return t.dueBucket === b.id && t.status !== "DONE";
-      }),
+      tasks: visible.filter((t) => BUCKET_MATCH[b.id]?.(t) ?? false),
     }));
   }, [visible]);
 
@@ -1121,7 +1125,7 @@ function TaskRow({
       <div className="text-[11px]" style={{ color: "#a8aaab" }}>
         {task.dueDate
           ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-          : (DUE_BUCKETS.find((b) => b.id === task.dueBucket)?.label ?? "—")}
+          : (DUE_BUCKETS.find((b) => BUCKET_MATCH[b.id]?.(task))?.label ?? "—")}
       </div>
       <div className="flex items-center gap-1.5">
         <Avatar name={task.ownerName} color={task.ownerColor} initials={task.ownerInitials} size={22} />
@@ -1357,8 +1361,7 @@ function TaskDetailDrawer({
                 <option value="today">Today</option>
                 <option value="tomorrow">Tomorrow</option>
                 <option value="this-week">This week</option>
-                <option value="next-week">Next week</option>
-                <option value="later">Later</option>
+                <option value="later">Upcoming</option>
               </select>
             </div>
           </div>
