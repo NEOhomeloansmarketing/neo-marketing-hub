@@ -68,7 +68,7 @@ function PriorityChip({ priority, small }: { priority: string; small?: boolean }
   );
 }
 
-type TabType = "mine" | "team" | "all" | "completed";
+type TabType = "mine" | "team" | "all" | "overdue" | "completed";
 
 // ─── Week grouping helpers ──────────────────────────────────────────────────
 function getWeekStart(date: Date): Date {
@@ -499,7 +499,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
 
   const visible = useMemo(() => {
     return tasks.filter((t) => {
-      if (tab === "completed") return false; // completed tab has its own view
+      if (tab === "completed" || tab === "overdue") return false; // these tabs have their own views
       if (t.status === "DONE") return false; // hide completed from active tabs
       if (tab === "mine" && t.ownerId !== currentUserId) return false;
       if (tab === "team" && t.scope !== "TEAM") return false;
@@ -507,6 +507,21 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
       return true;
     });
   }, [tasks, tab, currentUserId, query]);
+
+  // Overdue tab: all overdue tasks grouped by assignee
+  const overdueGroups = useMemo(() => {
+    const overdue = tasks
+      .filter((t) => t.status !== "DONE" && t.dueBucket === "yesterday")
+      .sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+    const map = new Map<string, { ownerId: string; ownerName: string; ownerColor?: string; ownerInitials?: string; tasks: Task[] }>();
+    for (const t of overdue) {
+      if (!map.has(t.ownerId)) {
+        map.set(t.ownerId, { ownerId: t.ownerId, ownerName: t.ownerName, ownerColor: t.ownerColor, ownerInitials: t.ownerInitials, tasks: [] });
+      }
+      map.get(t.ownerId)!.tasks.push(t);
+    }
+    return Array.from(map.values()).sort((a, b) => b.tasks.length - a.tasks.length);
+  }, [tasks]);
 
   const grouped = useMemo(() => {
     return DUE_BUCKETS.map((b) => ({
@@ -522,6 +537,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
   const teamOpen = tasks.filter((t) => t.scope === "TEAM" && t.status !== "DONE").length;
   const allOpen = tasks.filter((t) => t.status !== "DONE").length;
   const myOverdue = tasks.filter((t) => t.ownerId === currentUserId && t.status !== "DONE" && t.dueBucket === "yesterday").length;
+  const teamOverdue = tasks.filter((t) => t.status !== "DONE" && t.dueBucket === "yesterday").length;
   const completedTotal = tasks.filter((t) => t.status === "DONE").length;
 
   // Completed tab: tasks grouped by week (sorted newest first)
@@ -568,9 +584,15 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
           delta={myOverdue > 0 ? `${myOverdue} overdue` : "On track"}
           tone={myOverdue > 0 ? "danger" : "green"}
         />
-        <StatCard span={3} label="Team open" value={String(teamOpen)} delta="across team" tone="indigo" />
-        <StatCard span={3} label="Completed" value={String(tasks.filter((t) => t.status === "DONE").length)} delta="total done" tone="green" />
-        <StatCard span={3} label="Total tasks" value={String(allOpen)} delta="open" />
+        <StatCard
+          span={3}
+          label="Team open"
+          value={String(teamOpen)}
+          delta={teamOverdue > 0 ? `${teamOverdue} overdue` : "On track"}
+          tone={teamOverdue > 0 ? "danger" : "indigo"}
+        />
+        <StatCard span={3} label="Completed" value={String(completedTotal)} delta="total done" tone="green" />
+        <StatCard span={3} label="Total open" value={String(allOpen)} delta="across all" />
       </div>
 
       {/* Tabs + controls */}
@@ -579,6 +601,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
           <TabButton t="mine" label="My Tasks" count={myOpen} />
           <TabButton t="team" label="Team Tasks" count={teamOpen} />
           <TabButton t="all" label="All Tasks" count={allOpen} />
+          <TabButton t="overdue" label="Overdue" count={teamOverdue} accent="#ef4444" />
           <TabButton t="completed" label="Completed" count={completedTotal} accent="#22c55e" />
         </div>
         <div className="flex items-center gap-2 pb-2">
@@ -599,7 +622,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
               style={{ color: "#e2e8f0" }}
             />
           </div>
-          {tab !== "completed" && (
+          {tab !== "completed" && tab !== "overdue" && (
             <button
               onClick={() => setComposing(true)}
               className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white"
@@ -613,6 +636,16 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
       </div>
 
       {/* Info banner */}
+      {tab === "overdue" && teamOverdue > 0 && (
+        <div
+          className="flex items-start gap-3 rounded-lg p-3.5"
+          style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}
+        >
+          <div className="text-[12px] leading-relaxed" style={{ color: "#cbd5e1" }}>
+            <span className="font-semibold" style={{ color: "#fca5a5" }}>{teamOverdue} overdue task{teamOverdue !== 1 ? "s" : ""}</span> across the team — grouped by assignee. Mark done or reassign from the task drawer.
+          </div>
+        </div>
+      )}
       {tab === "completed" && (
         <div
           className="flex items-start gap-3 rounded-lg p-3.5"
@@ -632,6 +665,25 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
             <span className="font-semibold text-slate-100">My Tasks</span> shows everything assigned to
             you — across team projects and your personal queue.
           </div>
+        </div>
+      )}
+
+      {/* Overdue tab view */}
+      {tab === "overdue" && (
+        <div className="space-y-3">
+          {overdueGroups.length === 0 ? (
+            <EmptyState title="No overdue tasks 🎉" description="Everything is on track — no tasks are past due." />
+          ) : (
+            overdueGroups.map((group) => (
+              <OverduePersonSection
+                key={group.ownerId}
+                group={group}
+                currentUserId={currentUserId}
+                onToggle={toggle}
+                onOpen={setOpenTask}
+              />
+            ))
+          )}
         </div>
       )}
 
@@ -656,7 +708,7 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
       )}
 
       {/* Active tasks sectioned list */}
-      {tab !== "completed" && (
+      {tab !== "completed" && tab !== "overdue" && (
         <div className="space-y-3">
           {grouped.every((g) => g.tasks.length === 0) ? (
             <EmptyState
@@ -683,8 +735,8 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
         </div>
       )}
 
-      {/* Bulk action bar (hidden on completed tab) */}
-      {tab !== "completed" && selected.size > 0 && (
+      {/* Bulk action bar (hidden on completed/overdue tabs) */}
+      {tab !== "completed" && tab !== "overdue" && selected.size > 0 && (
         <div
           className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
           style={{ background: "#0e2b48", border: "1px solid #1d4368", minWidth: 300 }}
@@ -737,6 +789,89 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
         />
       )}
     </div>
+  );
+}
+
+// ─── Overdue by-person section ─────────────────────────────────────────────
+function OverduePersonSection({
+  group,
+  currentUserId,
+  onToggle,
+  onOpen,
+}: {
+  group: { ownerId: string; ownerName: string; ownerColor?: string; ownerInitials?: string; tasks: Task[] };
+  currentUserId: string;
+  onToggle: (id: string) => void;
+  onOpen: (t: Task) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const isMe = group.ownerId === currentUserId;
+
+  return (
+    <section className="rounded-lg overflow-hidden" style={{ background: "#0e2b48", border: "1px solid rgba(239,68,68,0.3)" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition hover:bg-white/[0.02]"
+      >
+        <Avatar name={group.ownerName} color={group.ownerColor} initials={group.ownerInitials} size={22} />
+        <span className="text-[12.5px] font-semibold tracking-tight text-slate-100">
+          {group.ownerName}{isMe ? " (me)" : ""}
+        </span>
+        <span
+          className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums"
+          style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)" }}
+        >
+          {group.tasks.length} overdue
+        </span>
+        <span className="ml-auto" style={{ color: "#858889", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
+      </button>
+      {open && (
+        <div>
+          <div
+            className="grid items-center gap-3 px-4 py-2 text-[10.5px] font-semibold uppercase"
+            style={{
+              gridTemplateColumns: "20px 1fr 80px 100px",
+              borderBottom: "1px solid #1d4368",
+              borderTop: "1px solid #1d4368",
+              color: "#858889",
+              background: "#0a2540",
+              letterSpacing: "0.12em",
+            }}
+          >
+            <div /><div>Task</div><div>Priority</div><div>Due bucket</div>
+          </div>
+          {group.tasks.map((t) => (
+            <div
+              key={t.id}
+              className="grid items-center gap-3 px-4 py-2.5 transition hover:bg-white/[0.02] cursor-pointer"
+              style={{ gridTemplateColumns: "20px 1fr 80px 100px", borderBottom: "1px solid #1d4368" }}
+              onClick={() => onOpen(t)}
+            >
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggle(t.id); }}
+                className="grid h-5 w-5 place-items-center rounded-full transition hover:border-green-400"
+                style={{ background: "transparent", border: "1.5px solid #5d6566" }}
+                title="Mark done"
+              />
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-medium" style={{ color: "#e2e8f0" }}>{t.title}</div>
+                {t.dueDate && (
+                  <div className="text-[10.5px] mt-0.5" style={{ color: "#fca5a5" }}>
+                    Due {new Date(t.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </div>
+                )}
+              </div>
+              <PriorityChip priority={t.priority} small />
+              <div className="text-[11px]" style={{ color: "#fca5a5" }}>Overdue</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
