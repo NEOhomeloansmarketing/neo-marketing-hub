@@ -10,7 +10,72 @@ export interface WeeklySummaryData {
   generatedAt: string;
 }
 
-function AISummaryCard({ initialSummary }: { initialSummary: WeeklySummaryData | null }) {
+function buildEmailBody(
+  summary: WeeklySummaryData,
+  weekLabel: string,
+  byPerson: TasksAnalyticsStats["byPerson"],
+): string {
+  const lines: string[] = [];
+
+  lines.push(`TEAM WEEKLY SUMMARY — ${weekLabel}`);
+  lines.push("=".repeat(52));
+  lines.push("");
+
+  // AI prose
+  summary.prose.split("\n\n").forEach((para) => {
+    lines.push(para);
+    lines.push("");
+  });
+
+  // Highlights
+  if (summary.highlights.length > 0) {
+    lines.push("HIGHLIGHTS");
+    lines.push("-".repeat(28));
+    summary.highlights.forEach((h) => lines.push(h));
+    lines.push("");
+  }
+
+  // Completed tasks table
+  const contributors = byPerson.filter((p) => p.completedThisWeek > 0);
+  if (contributors.length > 0) {
+    lines.push("COMPLETED TASKS THIS WEEK");
+    lines.push("=".repeat(52));
+    contributors
+      .sort((a, b) => b.completedThisWeek - a.completedThisWeek)
+      .forEach((person) => {
+        lines.push("");
+        lines.push(`${person.name}  (${person.completedThisWeek} task${person.completedThisWeek !== 1 ? "s" : ""})`);
+        lines.push("-".repeat(40));
+        person.completedTasks.forEach((t) => {
+          const date = new Date(t.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const priority = t.priority === "HIGH" ? "[HIGH]" : t.priority === "MEDIUM" ? "[MED] " : "[LOW] ";
+          lines.push(`  ${priority}  ${t.title}  (${date})`);
+        });
+      });
+    lines.push("");
+  }
+
+  // Summary totals
+  const total = byPerson.reduce((s, p) => s + p.completedThisWeek, 0);
+  const totalOpen = byPerson.reduce((s, p) => s + p.open, 0);
+  const totalOverdue = byPerson.reduce((s, p) => s + p.overdue, 0);
+  lines.push("=".repeat(52));
+  lines.push(`Total completed this week:  ${total}`);
+  lines.push(`Total still open:           ${totalOpen}`);
+  if (totalOverdue > 0) lines.push(`Overdue:                    ${totalOverdue}`);
+
+  return lines.join("\n");
+}
+
+function AISummaryCard({
+  initialSummary,
+  weekLabel,
+  byPerson,
+}: {
+  initialSummary: WeeklySummaryData | null;
+  weekLabel: string;
+  byPerson: TasksAnalyticsStats["byPerson"];
+}) {
   const [summary, setSummary] = useState<WeeklySummaryData | null>(initialSummary);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,6 +102,13 @@ function AISummaryCard({ initialSummary }: { initialSummary: WeeklySummaryData |
     }
   }
 
+  function handleEmail() {
+    if (!summary) return;
+    const subject = encodeURIComponent(`Team Weekly Summary — ${weekLabel}`);
+    const body = encodeURIComponent(buildEmailBody(summary, weekLabel, byPerson));
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  }
+
   const isFriday = new Date().getDay() === 5;
 
   return (
@@ -60,24 +132,39 @@ function AISummaryCard({ initialSummary }: { initialSummary: WeeklySummaryData |
             </div>
           </div>
         </div>
-        <button
-          onClick={generate}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
-          style={{ background: "rgba(91,203,245,0.12)", color: "#5bcbf5", border: "1px solid rgba(91,203,245,0.25)" }}
-        >
-          {loading ? (
-            <>
-              <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
-              Generating…
-            </>
-          ) : (
-            <>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-              {summary ? "Regenerate" : "Generate"}
-            </>
+        <div className="flex items-center gap-2">
+          {summary && (
+            <button
+              onClick={handleEmail}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110"
+              style={{ background: "rgba(34,197,94,0.10)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              Email Report
+            </button>
           )}
-        </button>
+          <button
+            onClick={generate}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+            style={{ background: "rgba(91,203,245,0.12)", color: "#5bcbf5", border: "1px solid rgba(91,203,245,0.25)" }}
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+                Generating…
+              </>
+            ) : (
+              <>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                {summary ? "Regenerate" : "Generate"}
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -252,7 +339,7 @@ export function TasksAnalytics({ stats, initialSummary }: { stats: TasksAnalytic
     <div className="space-y-6">
 
       {/* AI Summary */}
-      <AISummaryCard initialSummary={initialSummary} />
+      <AISummaryCard initialSummary={initialSummary} weekLabel={weekLabel} byPerson={byPerson} />
 
       {/* Week header */}
       <div className="flex items-center justify-between">
