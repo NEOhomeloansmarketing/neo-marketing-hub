@@ -71,22 +71,27 @@ Rules:
 - No trailing commas anywhere in the JSON
 - All string values must be on a single line — no newlines inside strings`;
 
-    // Prefill "{" to force pure JSON output (same technique as visibility-audit)
     const message = await client.messages.create({
       model: "claude-opus-4-7",
       max_tokens: 2048,
       messages: [
         { role: "user", content: prompt },
-        { role: "assistant", content: [{ type: "text", text: "{" }] },
       ],
     });
 
-    const continuation = message.content[0].type === "text" ? message.content[0].text : "";
-    let jsonStr = ("{" + continuation).trim();
+    const raw = message.content[0].type === "text" ? message.content[0].text : "";
 
-    // Strip accidental markdown fences
-    const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) jsonStr = fenceMatch[1].trim();
+    // Extract JSON — strip markdown fences if present, otherwise take the whole response
+    let jsonStr: string;
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
+      jsonStr = fenceMatch[1].trim();
+    } else {
+      // Find the outermost { ... } block
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      jsonStr = start !== -1 && end > start ? raw.slice(start, end + 1) : raw.trim();
+    }
 
     jsonStr = repairJson(jsonStr);
 
