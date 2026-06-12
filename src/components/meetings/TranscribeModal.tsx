@@ -24,7 +24,6 @@ interface SuggestedAction {
   editOwnerId: string;
   editDueDate: string;
   editPriority: string;
-  createTask: boolean;
 }
 
 interface TranscribeModalProps {
@@ -124,14 +123,13 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
 
       setSummary(data.summary ?? "");
       setSuggestions(
-        (data.actionItems ?? []).map((item: Omit<SuggestedAction, "approved" | "editTitle" | "editOwnerId" | "editDueDate" | "editPriority" | "createTask">) => ({
+        (data.actionItems ?? []).map((item: Omit<SuggestedAction, "approved" | "editTitle" | "editOwnerId" | "editDueDate" | "editPriority">) => ({
           ...item,
           approved: true,
           editTitle: item.title,
           editOwnerId: item.ownerId ?? "",
           editDueDate: item.dueDate ?? "",
           editPriority: item.priority ?? "MEDIUM",
-          createTask: false,
         }))
       );
       setStep("review");
@@ -162,16 +160,15 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
     try {
       const created = await Promise.all(
         toCreate.map(async (item) => {
-          const res = await fetch("/api/actions", {
+          const res = await fetch("/api/tasks", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               title: item.editTitle || item.title,
-              meetingId,
-              assigneeId: item.editOwnerId || undefined,
+              description: item.notes || undefined,
+              ownerId: item.editOwnerId || undefined,
               dueDate: item.editDueDate || undefined,
               priority: item.editPriority || "MEDIUM",
-              createTask: item.createTask,
             }),
           });
           if (!res.ok) return null;
@@ -180,21 +177,15 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
       );
 
       const successful = created.filter(Boolean);
-      // Map to ActionItem shape with attendee data
-      const enriched = successful.map((c) => {
-        const assignee = attendees.find((a) => a.id === c.assigneeId) ?? null;
-        return {
-          id: c.id,
-          title: c.title,
-          assignee: assignee ?? null,
-          dueDate: c.dueDate ?? null,
-          status: c.status,
-          source: c.source,
-          taskId: c.taskId ?? null,
-        };
-      });
-
-      onActionsCreated(enriched);
+      onActionsCreated(successful.map((c) => ({
+        id: c.id,
+        title: c.title,
+        assignee: attendees.find((a) => a.id === c.ownerId) ?? null,
+        dueDate: c.dueDate ?? null,
+        status: c.status,
+        source: "transcript",
+        taskId: c.id,
+      })));
       onClose();
     } catch (e) {
       setCreateError("Failed to create some action items. Please try again.");
@@ -225,10 +216,10 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
               <span className="text-[15px] font-bold text-slate-100">AI Transcript Analysis</span>
             </div>
             <p className="mt-0.5 text-[11.5px]" style={{ color: "#858889" }}>
-              {step === "input" && "Paste or upload your Teams transcript to extract action items"}
+              {step === "input" && "Paste or upload your Teams transcript to extract tasks"}
               {step === "analyzing" && "Claude is analyzing your transcript…"}
-              {step === "review" && `${suggestions.length} suggested action items — review and approve`}
-              {step === "creating" && "Creating approved action items…"}
+              {step === "review" && `${suggestions.length} suggested tasks — review and approve`}
+              {step === "creating" && "Creating tasks…"}
             </p>
           </div>
           <button
@@ -309,9 +300,9 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
                 <div className="text-[11.5px] font-semibold mb-1" style={{ color: "#5bcbf5" }}>How it works</div>
                 <ul className="space-y-0.5 text-[11px]" style={{ color: "#858889" }}>
                   <li>1. Paste or upload your transcript from Microsoft Teams</li>
-                  <li>2. Claude AI extracts suggested action items with owners & dates</li>
+                  <li>2. Claude AI extracts suggested tasks with owners & due dates</li>
                   <li>3. Review each suggestion — approve, edit, or reject</li>
-                  <li>4. Approved items are added to this meeting&apos;s action items</li>
+                  <li>4. Approved items are created as tasks assigned to your team</li>
                 </ul>
               </div>
             </div>
@@ -349,7 +340,7 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
               {suggestions.length > 0 && (
                 <div className="flex items-center justify-between">
                   <div className="text-[12px] font-semibold" style={{ color: "#a8aaab" }}>
-                    <span style={{ color: "#5bcbf5" }}>{approvedCount}</span> of {suggestions.length} selected
+                    <span style={{ color: "#5bcbf5" }}>{approvedCount}</span> of {suggestions.length} tasks selected
                   </div>
                   <div className="flex gap-3">
                     <button
@@ -432,10 +423,7 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
 
                     {/* Editable fields row */}
                     {item.approved && (
-                      <div
-                        className="grid grid-cols-3 gap-2 px-3 pb-3"
-                        style={{ gridTemplateColumns: "1fr 1fr auto" }}
-                      >
+                      <div className="grid grid-cols-3 gap-2 px-3 pb-3">
                         {/* Owner */}
                         <div>
                           <label className="block text-[9.5px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#5d6566" }}>Owner</label>
@@ -462,29 +450,18 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
                           />
                         </div>
 
-                        {/* Priority + create task */}
-                        <div className="flex flex-col gap-1">
-                          <div>
-                            <label className="block text-[9.5px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#5d6566" }}>Priority</label>
-                            <select
-                              value={item.editPriority}
-                              onChange={(e) => updateSuggestion(idx, { editPriority: e.target.value })}
-                              style={{ ...inputStyle, fontSize: 11 }}
-                            >
-                              <option value="HIGH">High</option>
-                              <option value="MEDIUM">Medium</option>
-                              <option value="LOW">Low</option>
-                            </select>
-                          </div>
-                          <label className="flex items-center gap-1.5 cursor-pointer mt-0.5">
-                            <input
-                              type="checkbox"
-                              checked={item.createTask}
-                              onChange={(e) => updateSuggestion(idx, { createTask: e.target.checked })}
-                              style={{ accentColor: "#5bcbf5" }}
-                            />
-                            <span className="text-[10px]" style={{ color: "#858889" }}>Create task</span>
-                          </label>
+                        {/* Priority */}
+                        <div>
+                          <label className="block text-[9.5px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#5d6566" }}>Priority</label>
+                          <select
+                            value={item.editPriority}
+                            onChange={(e) => updateSuggestion(idx, { editPriority: e.target.value })}
+                            style={{ ...inputStyle, width: "100%", fontSize: 11 }}
+                          >
+                            <option value="HIGH">High</option>
+                            <option value="MEDIUM">Medium</option>
+                            <option value="LOW">Low</option>
+                          </select>
                         </div>
                       </div>
                     )}
@@ -518,8 +495,8 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
                 style={{ border: "3px solid #1d4368", borderTopColor: "#5bcbf5" }}
               />
               <div>
-                <div className="text-[15px] font-bold text-slate-100 mb-1">Creating action items…</div>
-                <p className="text-[12px]" style={{ color: "#858889" }}>Adding {approvedCount} item{approvedCount !== 1 ? "s" : ""} to this meeting.</p>
+                <div className="text-[15px] font-bold text-slate-100 mb-1">Creating tasks…</div>
+                <p className="text-[12px]" style={{ color: "#858889" }}>Creating {approvedCount} task{approvedCount !== 1 ? "s" : ""} and assigning to your team.</p>
               </div>
             </div>
           )}
@@ -570,7 +547,7 @@ export function TranscribeModal({ meetingId, attendees, onClose, onActionsCreate
                 className="flex items-center gap-2 rounded-lg px-5 py-2 text-[12.5px] font-bold transition hover:brightness-110 disabled:opacity-40"
                 style={{ background: approvedCount > 0 ? "linear-gradient(180deg,#22c55e,#16a34a)" : "#14375a", color: approvedCount > 0 ? "#fff" : "#5d6566" }}
               >
-                ✓ Create {approvedCount > 0 ? `${approvedCount} ` : ""}Action Item{approvedCount !== 1 ? "s" : ""}
+                ✓ Create {approvedCount > 0 ? `${approvedCount} ` : ""}Task{approvedCount !== 1 ? "s" : ""}
               </button>
             )}
           </div>
