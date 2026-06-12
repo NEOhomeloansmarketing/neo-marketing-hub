@@ -42,12 +42,6 @@ const labelStyle: React.CSSProperties = {
   marginBottom: "6px",
 };
 
-interface ActionItemDraft {
-  title: string;
-  assigneeId: string;
-  dueDate: string;
-}
-
 export function MeetingNewForm({ teamMembers, currentUserId }: MeetingNewFormProps) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -55,7 +49,6 @@ export function MeetingNewForm({ teamMembers, currentUserId }: MeetingNewFormPro
   const [recurrence, setRecurrence] = useState("ONE_OFF");
   const [attendeeIds, setAttendeeIds] = useState<string[]>([currentUserId]);
   const [sections, setSections] = useState(DEFAULT_SECTIONS);
-  const [actionItems, setActionItems] = useState<ActionItemDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -63,18 +56,6 @@ export function MeetingNewForm({ teamMembers, currentUserId }: MeetingNewFormPro
     setAttendeeIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
-  };
-
-  const addActionItem = () => {
-    setActionItems((prev) => [...prev, { title: "", assigneeId: currentUserId, dueDate: "" }]);
-  };
-
-  const updateActionItem = (i: number, field: keyof ActionItemDraft, value: string) => {
-    setActionItems((prev) => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
-  };
-
-  const removeActionItem = (i: number) => {
-    setActionItems((prev) => prev.filter((_, idx) => idx !== i));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -104,22 +85,6 @@ export function MeetingNewForm({ teamMembers, currentUserId }: MeetingNewFormPro
         throw new Error(data.error ?? "Failed to create meeting");
       }
       const meeting = await res.json();
-
-      // Create action items and auto-generate tasks
-      for (const item of actionItems.filter((a) => a.title.trim())) {
-        await fetch("/api/actions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: item.title.trim(),
-            assigneeId: item.assigneeId || undefined,
-            dueDate: item.dueDate || undefined,
-            meetingId: meeting.id,
-            createTask: true,
-          }),
-        });
-      }
-
       router.push(`/meetings/${meeting.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create meeting.");
@@ -238,54 +203,6 @@ export function MeetingNewForm({ teamMembers, currentUserId }: MeetingNewFormPro
             + Add section
           </button>
         </div>
-      </div>
-
-      {/* Action items */}
-      <div className="rounded-lg p-6" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-[15px] font-semibold text-slate-100">Action items</h2>
-            <p className="mt-0.5 text-[11.5px]" style={{ color: "#858889" }}>Each item will auto-create a task assigned to the person.</p>
-          </div>
-          <button type="button" onClick={addActionItem}
-            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold"
-            style={{ background: "rgba(91,203,245,0.12)", color: "#5bcbf5", border: "1px solid rgba(91,203,245,0.35)" }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-            Add item
-          </button>
-        </div>
-        {actionItems.length === 0 ? (
-          <div className="rounded-md py-6 text-center text-[12px]" style={{ border: "1px dashed #1d4368", color: "#858889" }}>
-            No action items yet — click "Add item" to create one
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {actionItems.map((item, i) => (
-              <div key={i} className="grid gap-2" style={{ gridTemplateColumns: "1fr 160px 140px 32px" }}>
-                <input
-                  value={item.title}
-                  onChange={(e) => updateActionItem(i, "title", e.target.value)}
-                  placeholder="Action item title…"
-                  className="rounded-md px-3 py-2 text-[12.5px]"
-                  style={inputStyle}
-                />
-                <select value={item.assigneeId} onChange={(e) => updateActionItem(i, "assigneeId", e.target.value)}
-                  className="rounded-md px-2 py-2 text-[12px]" style={inputStyle}>
-                  <option value="">Unassigned</option>
-                  {teamMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-                <input type="date" value={item.dueDate} onChange={(e) => updateActionItem(i, "dueDate", e.target.value)}
-                  className="rounded-md px-2 py-2 text-[12px]" style={inputStyle} />
-                <button type="button" onClick={() => removeActionItem(i)}
-                  className="grid h-8 w-8 place-items-center rounded-md" style={{ background: "#14375a", color: "#a8aaab" }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {error && (
