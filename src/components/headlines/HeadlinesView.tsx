@@ -35,31 +35,59 @@ export function HeadlinesView({ users }: { users: Owner[] }) {
   const [taskPriority, setTaskPriority] = useState("MEDIUM");
   const [creatingTask, setCreatingTask] = useState(false);
   const [filterType, setFilterType] = useState<string>("ALL");
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Run setup first (creates Headline table if missing), then load
-    fetch("/api/setup")
-      .catch(() => {})
-      .finally(() => {
-        fetch("/api/headlines")
-          .then(r => r.json())
-          .then(d => { setHeadlines(Array.isArray(d) ? d : []); setLoading(false); })
-          .catch(() => setLoading(false));
-      });
+    async function init() {
+      // Ensure Headline table exists, then load
+      try {
+        const s = await fetch("/api/setup");
+        const sJson = await s.json();
+        if (!s.ok) {
+          setSetupError(`DB setup failed: ${sJson.results?.join(", ") ?? sJson.error}`);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        setSetupError(`Setup network error: ${String(e)}`);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const r = await fetch("/api/headlines");
+        const d = await r.json();
+        setHeadlines(Array.isArray(d) ? d : []);
+      } catch {
+        // leave empty
+      }
+      setLoading(false);
+    }
+    init();
   }, []);
 
   async function addHeadline() {
     if (!addTitle.trim()) return;
     setSaving(true);
-    const res = await fetch("/api/headlines", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: addTitle.trim(), type: addType, ownerId: addOwner || null }),
-    });
-    const h = await res.json();
-    setHeadlines(prev => [h, ...prev]);
-    setAddTitle(""); setAddType("WIN"); setAddOwner("");
-    setShowAdd(false); setSaving(false);
+    try {
+      const res = await fetch("/api/headlines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: addTitle.trim(), type: addType, ownerId: addOwner || null }),
+      });
+      const h = await res.json();
+      if (!res.ok || !h.id) {
+        alert(`Failed to save headline: ${h.error ?? "Unknown error"}`);
+        setSaving(false);
+        return;
+      }
+      setHeadlines(prev => [h, ...prev]);
+      setAddTitle(""); setAddType("WIN"); setAddOwner("");
+      setShowAdd(false);
+    } catch (e) {
+      alert(`Network error: ${String(e)}`);
+    }
+    setSaving(false);
   }
 
   async function resolveHeadline(id: string) {
@@ -182,6 +210,12 @@ export function HeadlinesView({ users }: { users: Owner[] }) {
       )}
 
       {/* Headlines list */}
+      {setupError && (
+        <div className="rounded-xl px-4 py-3 text-[12px]" style={{ background: "#f9731618", border: "1px solid #f9731644", color: "#f97316" }}>
+          ⚠️ {setupError}
+        </div>
+      )}
+
       {loading ? (
         <div className="py-16 text-center text-[13px]" style={{ color: "#5d6566" }}>Loading…</div>
       ) : visible.length === 0 ? (
