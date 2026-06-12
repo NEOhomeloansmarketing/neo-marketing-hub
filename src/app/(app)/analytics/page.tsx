@@ -2,11 +2,128 @@ import { TopBar } from "@/components/topbar/TopBar";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { AnalyticsTabs } from "@/components/analytics/AnalyticsTabs";
+import type { TasksAnalyticsStats } from "@/components/analytics/TasksAnalytics";
 
 export default async function AnalyticsPage() {
   await requireAuth();
 
   const now = new Date();
+
+  // ── Week boundaries (Mon–Sun) ────────────────────────────────────────────
+  function getWeekStart(d: Date): Date {
+    const day = d.getDay(); // 0=Sun
+    const diff = day === 0 ? -6 : 1 - day;
+    const ws = new Date(d);
+    ws.setDate(ws.getDate() + diff);
+    ws.setHours(0, 0, 0, 0);
+    return ws;
+  }
+  const thisWeekStart = getWeekStart(now);
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  const nextWeekEnd = new Date(now);
+  nextWeekEnd.setDate(nextWeekEnd.getDate() + 7);
+
+  // ── Task Analytics ──────────────────────────────────────────────────────
+  const weekEnd = new Date(thisWeekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekLabel = `${thisWeekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+
+  let taskStats: TasksAnalyticsStats = {
+    weekLabel,
+    completedThisWeek: 0,
+    completedLastWeek: 0,
+    totalOpen: 0,
+    overdue: 0,
+    highPriorityOpen: 0,
+    byPerson: [],
+    weeklyTrend: [],
+    priorityBreakdown: [],
+    dueSoon: [],
+  };
+
+  try {
+    const allTasks = await db.task.findMany({
+      include: { owner: true },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const completedThisWeek = allTasks.filter(
+      (t) => t.status === "DONE" && t.updatedAt >= thisWeekStart && t.updatedAt <= now
+    );
+    const completedLastWeek = allTasks.filter(
+      (t) => t.status === "DONE" && t.updatedAt >= lastWeekStart && t.updatedAt < thisWeekStart
+    );
+    const openTasks = allTasks.filter((t) => t.status !== "DONE");
+    const overdueTasks = openTasks.filter((t) => t.dueBucket === "yesterday");
+    const dueSoon = openTasks.filter((t) => t.dueDate && t.dueDate >= now && t.dueDate <= nextWeekEnd);
+
+    taskStats.completedThisWeek = completedThisWeek.length;
+    taskStats.completedLastWeek = completedLastWeek.length;
+    taskStats.totalOpen = openTasks.length;
+    taskStats.overdue = overdueTasks.length;
+    taskStats.highPriorityOpen = openTasks.filter((t) => t.priority === "HIGH").length;
+
+    // By person
+    const personMap = new Map<string, typeof taskStats.byPerson[0]>();
+    for (const t of allTasks) {
+      if (!personMap.has(t.ownerId)) {
+        personMap.set(t.ownerId, {
+          id: t.ownerId,
+          name: t.owner.name,
+          color: t.owner.color ?? undefined,
+          initials: t.owner.initials ?? undefined,
+          completedThisWeek: 0,
+          open: 0,
+          overdue: 0,
+          completedTasks: [],
+        });
+      }
+      const p = personMap.get(t.ownerId)!;
+      if (t.status === "DONE" && t.updatedAt >= thisWeekStart && t.updatedAt <= now) {
+        p.completedThisWeek++;
+        p.completedTasks.push({ id: t.id, title: t.title, priority: t.priority, completedAt: t.updatedAt.toISOString() });
+      } else if (t.status !== "DONE") {
+        p.open++;
+        if (t.dueBucket === "yesterday") p.overdue++;
+      }
+    }
+    taskStats.byPerson = Array.from(personMap.values());
+
+    // Priority breakdown (completed this week vs still open)
+    for (const priority of ["HIGH", "MEDIUM", "LOW"]) {
+      taskStats.priorityBreakdown.push({
+        priority,
+        completed: completedThisWeek.filter((t) => t.priority === priority).length,
+        open: openTasks.filter((t) => t.priority === priority).length,
+      });
+    }
+
+    // 8-week trend
+    taskStats.weeklyTrend = Array.from({ length: 8 }, (_, i) => {
+      const ws = new Date(thisWeekStart);
+      ws.setDate(ws.getDate() - 7 * (7 - i));
+      const we = new Date(ws);
+      we.setDate(we.getDate() + 7);
+      return {
+        label: ws.toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
+        completed: allTasks.filter((t) => t.status === "DONE" && t.updatedAt >= ws && t.updatedAt < we).length,
+        created: allTasks.filter((t) => t.createdAt >= ws && t.createdAt < we).length,
+      };
+    });
+
+    // Due soon (sorted by date)
+    taskStats.dueSoon = dueSoon
+      .sort((a, b) => (a.dueDate?.getTime() ?? 0) - (b.dueDate?.getTime() ?? 0))
+      .slice(0, 15)
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        ownerName: t.owner.name,
+        dueDate: t.dueDate!.toISOString(),
+        priority: t.priority,
+      }));
+  } catch { /* DB not ready */ }
 
   // ── Marketing Requests ──────────────────────────────────────────────────
   let requestStats = {
@@ -202,7 +319,7 @@ export default async function AnalyticsPage() {
     <>
       <TopBar title="Analytics" subtitle="Reporting across requests, compliance, and team activity" />
       <div className="mt-6">
-        <AnalyticsTabs requestStats={requestStats} complianceStats={complianceStats} />
+        <AnalyticsTabs requestStats={requestStats} complianceStats={complianceStats} taskStats={taskStats} />
       </div>
     </>
   );

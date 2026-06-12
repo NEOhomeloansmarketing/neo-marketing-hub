@@ -5,11 +5,14 @@ import { RequestsAnalytics } from "./RequestsAnalytics";
 import { ComplianceAnalytics } from "./ComplianceAnalytics";
 import { SearchConsoleAnalytics } from "./SearchConsoleAnalytics";
 import { DudaAnalytics } from "./DudaAnalytics";
+import { TasksAnalytics } from "./TasksAnalytics";
+import type { TasksAnalyticsStats } from "./TasksAnalytics";
 
 type RequestStats = React.ComponentProps<typeof RequestsAnalytics>["stats"];
 type ComplianceStats = React.ComponentProps<typeof ComplianceAnalytics>["stats"];
 
 const TABS = [
+  { id: "tasks", label: "📋 Team Tasks" },
   { id: "requests", label: "Marketing Requests" },
   { id: "compliance", label: "Advisor Compliance" },
   { id: "search", label: "Search Console" },
@@ -19,11 +22,13 @@ const TABS = [
 export function AnalyticsTabs({
   requestStats,
   complianceStats,
+  taskStats,
 }: {
   requestStats: RequestStats;
   complianceStats: ComplianceStats;
+  taskStats: TasksAnalyticsStats;
 }) {
-  const [activeTab, setActiveTab] = useState("requests");
+  const [activeTab, setActiveTab] = useState("tasks");
 
   return (
     <div className="space-y-6">
@@ -45,6 +50,7 @@ export function AnalyticsTabs({
         ))}
       </div>
 
+      {activeTab === "tasks" && <TasksAnalytics stats={taskStats} />}
       {activeTab === "requests" && <RequestsAnalytics stats={requestStats} />}
       {activeTab === "compliance" && <ComplianceAnalytics stats={complianceStats} />}
       {activeTab === "search" && <SearchConsoleAnalytics />}
