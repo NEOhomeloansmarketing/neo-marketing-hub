@@ -48,7 +48,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const client = new Anthropic();
     const attendeeNames = meeting.attendees.map((a) => a.user.name).join(", ");
 
-    const prompt = `Analyze this meeting transcript. Return ONLY a JSON object — no markdown, no code fences, no explanation, no preamble.
+    const prompt = `Analyze this meeting transcript thoroughly and completely. Return ONLY a JSON object — no markdown, no code fences, no explanation, no preamble.
 
 Meeting: "${meeting.title}"
 Attendees: ${attendeeNames || "Unknown"}
@@ -60,17 +60,19 @@ Return this exact JSON structure:
 {"summary":"string","actionItems":[{"title":"string","ownerName":"string or null","priority":"HIGH or MEDIUM or LOW","dueDate":"YYYY-MM-DD or null","notes":"string or null","reasoning":"string"}]}
 
 Rules:
-- summary: 2-4 sentences covering what was discussed and decided
-- actionItems: only real concrete tasks (max 10)
-- ownerName: must be one of the attendee names above, or null
-- priority: exactly HIGH, MEDIUM, or LOW
-- dueDate: only if a specific date was mentioned, otherwise null
-- All string values on a single line, no line breaks inside strings
+- summary: 4-6 sentences — cover every topic discussed, every decision made, and the overall outcome
+- actionItems: capture EVERY action item, follow-up, task, commitment, or next step mentioned — do NOT skip anything. Include things even if they seem minor. There is no maximum limit.
+- title: start with a verb, be specific (e.g. "Send updated pricing sheet to John by Friday" not just "Pricing")
+- ownerName: must be one of the attendee names above, or null if unclear
+- priority: HIGH = urgent/time-sensitive, MEDIUM = important but not urgent, LOW = nice to have
+- dueDate: include if any date or timeframe was mentioned (convert "next Friday" to an actual date if possible), otherwise null
+- notes: any relevant context, background, or specifics that make the action item clearer
+- All string values on a single line — no line breaks inside strings
 - No trailing commas`;
 
     const message = await client.messages.create({
       model: "claude-opus-4-7",
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: "user", content: prompt }],
     });
 
