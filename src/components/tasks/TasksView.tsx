@@ -476,10 +476,20 @@ function NewTaskPanel({
   );
 }
 
+type SortBy = "bucket" | "assignee" | "priority";
+
+const PRIORITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+const PRIORITY_LABELS: Record<string, { label: string; color: string; tone: string }> = {
+  HIGH:   { label: "High Priority",   color: "#ef4444", tone: "rgba(239,68,68,0.15)" },
+  MEDIUM: { label: "Medium Priority", color: "#f59e0b", tone: "rgba(245,158,11,0.15)" },
+  LOW:    { label: "Low Priority",    color: "#22c55e", tone: "rgba(34,197,94,0.10)" },
+};
+
 // ─── Main view ─────────────────────────────────────────────────────────────
 export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, openCompose, onComposeClose }: TasksViewProps) {
   const [tasks, setTasks] = useState(initialTasks);
   const [tab, setTab] = useState<TabType>("mine");
+  const [sortBy, setSortBy] = useState<SortBy>("bucket");
   const [query, setQuery] = useState("");
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const [composing, setComposing] = useState(false);
@@ -562,6 +572,23 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
     }));
   }, [visible]);
 
+  // Group by assignee
+  const groupedByAssignee = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; color?: string; initials?: string; tasks: Task[] }>();
+    for (const t of visible) {
+      if (!map.has(t.ownerId)) map.set(t.ownerId, { id: t.ownerId, name: t.ownerName, color: t.ownerColor, initials: t.ownerInitials, tasks: [] });
+      map.get(t.ownerId)!.tasks.push(t);
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [visible]);
+
+  // Group by priority
+  const groupedByPriority = useMemo(() => {
+    return (["HIGH", "MEDIUM", "LOW"] as const)
+      .map((p) => ({ priority: p, tasks: visible.filter((t) => t.priority === p).sort((a, b) => a.ownerName.localeCompare(b.ownerName)) }))
+      .filter((g) => g.tasks.length > 0);
+  }, [visible]);
+
   const myOpen = tasks.filter((t) => t.ownerId === currentUserId && t.status !== "DONE").length;
   const teamOpen = tasks.filter((t) => t.scope === "TEAM" && t.status !== "DONE").length;
   const allOpen = tasks.filter((t) => t.status !== "DONE").length;
@@ -634,9 +661,32 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
           <TabButton t="completed" label="Completed" count={completedTotal} accent="#22c55e" />
         </div>
         <div className="flex items-center gap-2 pb-2">
+          {/* Sort pills — only on active task tabs */}
+          {tab !== "completed" && tab !== "overdue" && (
+            <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: "#0a2540", border: "1px solid #1d4368" }}>
+              {([
+                { id: "bucket",   label: "Due Date" },
+                { id: "assignee", label: "Assignee" },
+                { id: "priority", label: "Priority" },
+              ] as { id: SortBy; label: string }[]).map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSortBy(s.id)}
+                  className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition"
+                  style={{
+                    background: sortBy === s.id ? "#14375a" : "transparent",
+                    color: sortBy === s.id ? "#5bcbf5" : "#858889",
+                    border: sortBy === s.id ? "1px solid #1d4368" : "1px solid transparent",
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div
             className="flex h-8 items-center gap-2 rounded-md px-2.5"
-            style={{ background: "#0a2540", border: "1px solid #1d4368", width: 220 }}
+            style={{ background: "#0a2540", border: "1px solid #1d4368", width: 200 }}
           >
             <span style={{ color: "#858889" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -739,27 +789,76 @@ export function TasksView({ tasks: initialTasks, teamMembers, currentUserId, ope
       {/* Active tasks sectioned list */}
       {tab !== "completed" && tab !== "overdue" && (
         <div className="space-y-3">
-          {grouped.every((g) => g.tasks.length === 0) ? (
-            <EmptyState
-              title="No tasks yet"
-              description={'Click "New task" to create your first task.'}
-            />
-          ) : (
-            grouped.map(({ bucket, tasks: bucketTasks }) => {
-              if (bucketTasks.length === 0) return null;
-              return (
-                <BucketSection
-                  key={bucket.id}
-                  bucket={bucket}
-                  tasks={bucketTasks}
+          {/* ── Sort: Due Date (default bucket grouping) ── */}
+          {sortBy === "bucket" && (
+            grouped.every((g) => g.tasks.length === 0) ? (
+              <EmptyState title="No tasks yet" description={'Click "New task" to create your first task.'} />
+            ) : (
+              grouped.map(({ bucket, tasks: bucketTasks }) => {
+                if (bucketTasks.length === 0) return null;
+                return (
+                  <BucketSection
+                    key={bucket.id}
+                    bucket={bucket}
+                    tasks={bucketTasks}
+                    onToggle={toggle}
+                    onOpen={setOpenTask}
+                    defaultOpen
+                    selected={selected}
+                    onToggleSelect={toggleSelect}
+                  />
+                );
+              })
+            )
+          )}
+
+          {/* ── Sort: Assignee ── */}
+          {sortBy === "assignee" && (
+            groupedByAssignee.length === 0 ? (
+              <EmptyState title="No tasks yet" description={'Click "New task" to create your first task.'} />
+            ) : (
+              groupedByAssignee.map((group) => (
+                <GenericGroupSection
+                  key={group.id}
+                  label={group.name}
+                  sublabel={`${group.tasks.length} task${group.tasks.length !== 1 ? "s" : ""}`}
+                  accent="#5bcbf5"
+                  headerLeft={<Avatar name={group.name} color={group.color} initials={group.initials} size={22} />}
+                  tasks={group.tasks}
                   onToggle={toggle}
                   onOpen={setOpenTask}
-                  defaultOpen={bucket.id !== "done"}
                   selected={selected}
                   onToggleSelect={toggleSelect}
+                  hideAssignee={false}
                 />
-              );
-            })
+              ))
+            )
+          )}
+
+          {/* ── Sort: Priority ── */}
+          {sortBy === "priority" && (
+            groupedByPriority.length === 0 ? (
+              <EmptyState title="No tasks yet" description={'Click "New task" to create your first task.'} />
+            ) : (
+              groupedByPriority.map((group) => {
+                const meta = PRIORITY_LABELS[group.priority];
+                return (
+                  <GenericGroupSection
+                    key={group.priority}
+                    label={meta.label}
+                    sublabel={`${group.tasks.length} task${group.tasks.length !== 1 ? "s" : ""}`}
+                    accent={meta.color}
+                    dotColor={meta.color}
+                    tasks={group.tasks}
+                    onToggle={toggle}
+                    onOpen={setOpenTask}
+                    selected={selected}
+                    onToggleSelect={toggleSelect}
+                    hideAssignee={false}
+                  />
+                );
+              })
+            )
           )}
         </div>
       )}
@@ -989,6 +1088,71 @@ function CompletedWeekSection({
                 </span>
               </div>
             </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Generic group section (used for assignee + priority sort views) ──────────
+function GenericGroupSection({
+  label, sublabel, accent, dotColor, headerLeft, tasks, onToggle, onOpen, selected, onToggleSelect, hideAssignee,
+}: {
+  label: string;
+  sublabel?: string;
+  accent?: string;
+  dotColor?: string;
+  headerLeft?: React.ReactNode;
+  tasks: Task[];
+  onToggle: (id: string) => void;
+  onOpen: (t: Task) => void;
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
+  hideAssignee?: boolean;
+}) {
+  const [open, setOpen] = useState(true);
+  const color = accent ?? "#5bcbf5";
+  const allSelected = tasks.length > 0 && tasks.every((t) => selected.has(t.id));
+  const someSelected = tasks.some((t) => selected.has(t.id));
+
+  return (
+    <section className="rounded-lg overflow-hidden" style={{ background: "#0e2b48", border: "1px solid #1d4368" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition hover:bg-white/[0.02]"
+      >
+        {headerLeft && <span className="shrink-0">{headerLeft}</span>}
+        {!headerLeft && dotColor && <span className="h-2 w-2 rounded-full shrink-0" style={{ background: dotColor }} />}
+        <span className="text-[12.5px] font-semibold tracking-tight text-slate-100">{label}</span>
+        {sublabel && <span className="rounded-full px-1.5 text-[10px] font-semibold tabular-nums" style={{ background: "#14375a", color: "#a8aaab" }}>{sublabel}</span>}
+        <span className="ml-auto" style={{ color: "#858889", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+        </span>
+      </button>
+      {open && (
+        <div>
+          <div
+            className="grid items-center gap-3 px-4 py-2 text-[10.5px] font-semibold uppercase"
+            style={{
+              gridTemplateColumns: `16px 20px 1fr 80px 100px${hideAssignee ? "" : " 96px"}`,
+              borderBottom: "1px solid #1d4368", borderTop: "1px solid #1d4368",
+              color: "#858889", background: "#0a2540", letterSpacing: "0.12em",
+            }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); tasks.forEach((t) => { const inSet = selected.has(t.id); if (allSelected ? inSet : !inSet) onToggleSelect(t.id); }); }}
+              className="grid h-4 w-4 place-items-center rounded transition"
+              style={{ background: allSelected ? "#5bcbf5" : "#14375a", border: `1px solid ${allSelected || someSelected ? "#5bcbf5" : "#1d4368"}` }}
+            >
+              {allSelected && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#061320" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+              {someSelected && !allSelected && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#5bcbf5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>}
+            </button>
+            <div /><div>Task</div><div>Priority</div><div>Due</div>
+            {!hideAssignee && <div>Assignee</div>}
+          </div>
+          {tasks.map((t) => (
+            <TaskRow key={t.id} task={t} onToggle={onToggle} onOpen={onOpen} isSelected={selected.has(t.id)} onToggleSelect={onToggleSelect} />
           ))}
         </div>
       )}
